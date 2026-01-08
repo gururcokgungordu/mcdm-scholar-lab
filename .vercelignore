@@ -1,0 +1,16 @@
+# Ignore server folder - we use api/ instead
+server/
+
+# Node modules
+node_modules/
+
+# IDE
+.idea/
+.vscode/
+
+# Logs
+*.log
+
+# Local env files
+.env
+.env.local
