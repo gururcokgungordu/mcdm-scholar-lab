@@ -1,14 +1,48 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { createClient } from '@supabase/supabase-js';
 
-// Initialize Supabase
-const supabase = createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_KEY
-);
+// API keys for fallback
+const API_KEYS = [
+    process.env.GEMINI_API_KEY,
+    process.env.GEMINI_API_KEY_BACKUP
+].filter(Boolean);
 
-// Initialize Gemini
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+let currentKeyIndex = 0;
+
+const getGenAI = () => {
+    if (API_KEYS.length === 0) {
+        throw new Error('No GEMINI_API_KEY environment variables are set');
+    }
+    return new GoogleGenerativeAI(API_KEYS[currentKeyIndex]);
+};
+
+const rotateApiKey = () => {
+    if (API_KEYS.length > 1) {
+        currentKeyIndex = (currentKeyIndex + 1) % API_KEYS.length;
+        return true;
+    }
+    return false;
+};
+
+const executeWithFallback = async (operation) => {
+    let lastError;
+    const triedKeys = new Set();
+
+    while (triedKeys.size < API_KEYS.length) {
+        try {
+            triedKeys.add(currentKeyIndex);
+            return await operation(getGenAI());
+        } catch (error) {
+            lastError = error;
+            if (error.message?.includes('429') || error.message?.includes('quota')) {
+                if (rotateApiKey() && !triedKeys.has(currentKeyIndex)) {
+                    continue;
+                }
+            }
+            break;
+        }
+    }
+    throw lastError;
+};
 
 const PROMPT_TEMPLATE = `
 You are an expert academic analyst specializing in MCDM (Multi-Criteria Decision Making) research papers.
@@ -16,60 +50,64 @@ Your task is to FULLY understand and extract the complete methodology flow from 
 
 IMPORTANT: MCDM papers can have MANY different structures. Be FLEXIBLE and ADAPTIVE.
 
-FLEXIBLE EXTRACTION - Capture whatever the paper contains:
+YOUR ANALYSIS APPROACH:
+1. First, READ the entire paper methodology section carefully
+2. Identify ALL stages/steps of the MCDM process described
+3. Extract data from ALL relevant tables - not just one
+4. Understand the MATHEMATICAL FLOW from input to final ranking
+
+Return a JSON object with:
 {
   "method": "Complete method name",
-  "applicationArea": "Application domain",
-  "fuzzySystem": "Fuzzy system type or Crisp",
-  "numberSet": "Number representation",
-  "methodologySteps": [{"step": 1, "name": "...", "description": "..."}],
-  "criteria": [{"name": "...", "weight": 0.XX, "direction": "max/min"}],
-  "alternatives": ["Alt1", "Alt2"],
-  "matrix": [[values]],
-  "originalRanking": [{"alternative": "...", "score": 0.XX, "rank": 1}],
-  "summary": "Methodology summary",
+  "applicationArea": "The specific application domain",
+  "fuzzySystem": "Fuzzy system type or 'Crisp'",
+  "numberSet": "Description of number representation used",
+  "methodologySteps": [{"step": 1, "name": "Step name", "description": "Description"}],
+  "criteria": [{"name": "Criterion name", "weight": 0.XX, "direction": "max or min"}],
+  "alternatives": ["Alternative 1", "Alternative 2"],
+  "matrix": [[numeric_values_row_1], [numeric_values_row_2]],
+  "originalRanking": [{"alternative": "Name", "score": 0.XXXX, "rank": 1}],
+  "summary": "Comprehensive summary of the methodology",
   "logicModule": {
-    "fuzzyType": "Crisp/Triangular/etc",
-    "normalization": "Vector/Linear/etc",
-    "aggregation": "Distance-to-Ideal/Weighted-Sum/etc",
-    "defuzzification": "Centroid/None/etc",
-    "weightingMethod": "AHP/Entropy/etc"
+    "fuzzyType": "Crisp/Triangular/etc.",
+    "normalization": "Vector/Linear/Max-Min/Sum/None",
+    "aggregation": "Distance-to-Ideal/Weighted-Sum/Outranking",
+    "defuzzification": "Centroid/None",
+    "weightingMethod": "AHP/BWM/CRITIC/Direct/Equal"
   },
   "dataQuality": {
     "hasCompleteCriteria": true/false,
     "hasCompleteMatrix": true/false,
     "hasWeights": true/false,
     "hasRanking": true/false,
-    "missingData": [],
-    "notes": ""
+    "missingData": ["List any data that couldn't be extracted"],
+    "notes": "Any important notes"
   }
 }
 
-OUTPUT ONLY VALID JSON.
+CRITICAL: Extract ALL data visible in tables. OUTPUT ONLY VALID JSON.
 `;
 
 function validateAndFixAnalysis(analysis) {
-    if (!analysis) return null;
-
-    // Ensure arrays exist
     if (!Array.isArray(analysis.criteria)) analysis.criteria = [];
     if (!Array.isArray(analysis.alternatives)) analysis.alternatives = [];
     if (!Array.isArray(analysis.matrix)) analysis.matrix = [];
     if (!Array.isArray(analysis.originalRanking)) analysis.originalRanking = [];
 
-    // Ensure matrix is 2D
-    analysis.matrix = analysis.matrix.map(row =>
-        Array.isArray(row) ? row.map(v => typeof v === 'number' ? v : parseFloat(v) || 0) : [0]
-    );
+    analysis.matrix = analysis.matrix.map(row => {
+        if (!Array.isArray(row)) return [0];
+        return row.map(cell => {
+            const num = parseFloat(cell);
+            return isNaN(num) ? 0 : num;
+        });
+    });
 
-    // Ensure criteria have proper structure
     analysis.criteria = analysis.criteria.map((c, i) => ({
-        name: c?.name || `C${i + 1}`,
-        weight: typeof c?.weight === 'number' ? c.weight : parseFloat(c?.weight) || 0,
-        direction: c?.direction === 'min' ? 'min' : 'max'
+        name: c.name || `Criterion ${i + 1}`,
+        weight: parseFloat(c.weight) || 0,
+        direction: c.direction === 'min' ? 'min' : 'max'
     }));
 
-    // Normalize weights if needed
     const weightSum = analysis.criteria.reduce((sum, c) => sum + c.weight, 0);
     if (weightSum > 0 && (weightSum < 0.9 || weightSum > 1.1)) {
         analysis.criteria = analysis.criteria.map(c => ({
@@ -78,14 +116,12 @@ function validateAndFixAnalysis(analysis) {
         }));
     }
 
-    // Ensure logicModule exists
     if (!analysis.logicModule) {
         analysis.logicModule = {
             fuzzyType: 'Crisp',
             normalization: 'Linear',
             aggregation: 'Weighted-Sum',
-            defuzzification: 'None',
-            weightingMethod: 'Direct'
+            defuzzification: 'None'
         };
     }
 
@@ -110,35 +146,36 @@ export default async function handler(req, res) {
         const { pdfBase64 } = req.body;
 
         if (!pdfBase64) {
-            return res.status(400).json({ error: 'PDF data is required' });
+            return res.status(400).json({ error: 'No PDF data provided' });
         }
 
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-
-        const pdfPart = {
-            inlineData: {
-                mimeType: 'application/pdf',
-                data: pdfBase64
-            }
-        };
-
-        const result = await model.generateContent({
-            contents: [{ role: 'user', parts: [pdfPart, { text: PROMPT_TEMPLATE }] }],
-            generationConfig: {
-                responseMimeType: 'application/json',
-                temperature: 0.1
-            }
+        const analysis = await executeWithFallback(async (genAI) => {
+            const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+            const result = await model.generateContent({
+                contents: [{
+                    role: 'user',
+                    parts: [
+                        { text: PROMPT_TEMPLATE },
+                        {
+                            inlineData: {
+                                mimeType: 'application/pdf',
+                                data: pdfBase64
+                            }
+                        }
+                    ]
+                }],
+                generationConfig: {
+                    responseMimeType: 'application/json',
+                    temperature: 0.0
+                }
+            });
+            return JSON.parse(result.response.text());
         });
 
-        const analysisText = result.response.text();
-        let analysis = JSON.parse(analysisText);
-        analysis = validateAndFixAnalysis(analysis);
-
-        console.log(`✅ Analyzed: ${analysis.alternatives?.length} alternatives, ${analysis.criteria?.length} criteria`);
-
-        res.status(200).json(analysis);
+        const validatedAnalysis = validateAndFixAnalysis(analysis);
+        res.json(validatedAnalysis);
     } catch (error) {
-        console.error('Analysis error:', error);
-        res.status(500).json({ error: error.message || 'Failed to analyze paper' });
+        console.error('Analyze error:', error);
+        res.status(500).json({ error: error.message || 'Failed to analyze PDF' });
     }
 }

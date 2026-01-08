@@ -1,6 +1,64 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const API_KEYS = [
+    process.env.GEMINI_API_KEY,
+    process.env.GEMINI_API_KEY_BACKUP
+].filter(Boolean);
+
+let currentKeyIndex = 0;
+
+const getGenAI = () => {
+    if (API_KEYS.length === 0) {
+        throw new Error('No GEMINI_API_KEY environment variables are set');
+    }
+    return new GoogleGenerativeAI(API_KEYS[currentKeyIndex]);
+};
+
+const executeWithFallback = async (operation) => {
+    let lastError;
+    const triedKeys = new Set();
+
+    while (triedKeys.size < API_KEYS.length) {
+        try {
+            triedKeys.add(currentKeyIndex);
+            return await operation(getGenAI());
+        } catch (error) {
+            lastError = error;
+            if (error.message?.includes('429') || error.message?.includes('quota')) {
+                if (API_KEYS.length > 1) {
+                    currentKeyIndex = (currentKeyIndex + 1) % API_KEYS.length;
+                    if (!triedKeys.has(currentKeyIndex)) continue;
+                }
+            }
+            break;
+        }
+    }
+    throw lastError;
+};
+
+function validateAndFixAnalysis(analysis) {
+    if (!Array.isArray(analysis.criteria)) analysis.criteria = [];
+    if (!Array.isArray(analysis.alternatives)) analysis.alternatives = [];
+    if (!Array.isArray(analysis.matrix)) analysis.matrix = [];
+    if (!Array.isArray(analysis.originalRanking)) analysis.originalRanking = [];
+
+    analysis.criteria = analysis.criteria.map((c, i) => ({
+        name: c.name || `Criterion ${i + 1}`,
+        weight: parseFloat(c.weight) || 0,
+        direction: c.direction === 'min' ? 'min' : 'max'
+    }));
+
+    if (!analysis.logicModule) {
+        analysis.logicModule = {
+            fuzzyType: 'Crisp',
+            normalization: 'Linear',
+            aggregation: 'Weighted-Sum',
+            defuzzification: 'None'
+        };
+    }
+
+    return analysis;
+}
 
 export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -14,41 +72,55 @@ export default async function handler(req, res) {
         const { currentAnalysis, userMessage, conversationHistory } = req.body;
 
         if (!currentAnalysis || !userMessage) {
-            return res.status(400).json({ error: 'Current analysis and user message required' });
+            return res.status(400).json({ error: 'Current analysis and user message are required' });
         }
 
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+        const refinedData = await executeWithFallback(async (genAI) => {
+            const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
-        const prompt = `
-You are an AI assistant helping to correct MCDM analysis data.
+            const systemPrompt = `
+You are an AI assistant helping to correct and refine MCDM analysis data.
 
-CURRENT DATA:
+CURRENT EXTRACTED DATA:
 ${JSON.stringify(currentAnalysis, null, 2)}
 
-CONVERSATION:
-${conversationHistory || 'None'}
+CONVERSATION HISTORY:
+${conversationHistory || 'No previous messages'}
 
-USER REQUEST:
+USER'S CORRECTION REQUEST:
 ${userMessage}
 
-Apply the correction and return complete JSON:
+YOUR TASK:
+1. Understand what the user is asking to correct or add
+2. Apply the correction to the data
+3. Return the COMPLETE updated analysis object
+
+RESPONSE FORMAT (JSON only):
 {
-  "updatedAnalysis": { /* complete corrected analysis */ },
-  "changes": ["list of changes"],
-  "aiResponse": "explanation in Turkish",
+  "updatedAnalysis": { /* Complete updated analysis object */ },
+  "changes": ["List of changes made"],
+  "aiResponse": "Natural language explanation of what was corrected",
   "needsMoreInfo": false
 }
 `;
 
-        const result = await model.generateContent({
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
+            const result = await model.generateContent({
+                contents: [{ role: 'user', parts: [{ text: systemPrompt }] }],
+                generationConfig: {
+                    responseMimeType: 'application/json',
+                    temperature: 0.2
+                }
+            });
+            return JSON.parse(result.response.text());
         });
 
-        const data = JSON.parse(result.response.text());
-        res.status(200).json(data);
+        if (refinedData.updatedAnalysis) {
+            refinedData.updatedAnalysis = validateAndFixAnalysis(refinedData.updatedAnalysis);
+        }
+
+        res.json(refinedData);
     } catch (error) {
-        console.error('Refine error:', error);
-        res.status(500).json({ error: error.message });
+        console.error('Refine analysis error:', error);
+        res.status(500).json({ error: error.message || 'Failed to refine analysis' });
     }
 }
