@@ -46,18 +46,40 @@ export const MCDMCalculator: React.FC<Props> = ({ initialData, onDataChange }) =
     const numCrit = criteria.length;
     const logic = initialData.logicModule;
 
+    // IMPORTANT: Check if weights exist, if not use equal weights
+    const weightSum = criteria.reduce((sum, c) => sum + (c.weight || 0), 0);
+    const effectiveWeights = weightSum > 0.001
+      ? criteria.map(c => c.weight || 0)
+      : criteria.map(() => 1 / numCrit); // Equal weights fallback
+
+    console.log('🔢 Calculation Debug:', {
+      numAlts,
+      numCrit,
+      weightSum,
+      effectiveWeights,
+      matrixSample: matrix[0]
+    });
+
     // Step 1: Normalize based on method type
-    const normalizedMatrix: number[][] = matrix.map(row => [...row]);
+    const normalizedMatrix: number[][] = [];
+
+    for (let i = 0; i < numAlts; i++) {
+      normalizedMatrix[i] = [];
+      for (let j = 0; j < numCrit; j++) {
+        normalizedMatrix[i][j] = 0;
+      }
+    }
 
     for (let j = 0; j < numCrit; j++) {
       const colValues = matrix.map(row => row[j] || 0);
       const maxVal = Math.max(...colValues, 0.0001);
-      const minVal = Math.min(...colValues.filter(v => v > 0), 0.0001);
+      const minVal = Math.min(...colValues.filter(v => v > 0), maxVal * 0.001); // Better fallback
       const sumSquares = Math.sqrt(colValues.reduce((sum, v) => sum + v * v, 0)) || 0.0001;
       const colSum = colValues.reduce((a, b) => a + b, 0) || 0.0001;
 
       for (let i = 0; i < numAlts; i++) {
         const value = matrix[i]?.[j] || 0;
+        const direction = criteria[j]?.direction || 'max';
 
         // Apply normalization based on method
         if (logic?.normalization === 'Vector') {
@@ -66,15 +88,16 @@ export const MCDMCalculator: React.FC<Props> = ({ initialData, onDataChange }) =
           normalizedMatrix[i][j] = value / colSum;
         } else if (logic?.normalization === 'Max-Min') {
           const range = maxVal - minVal || 1;
-          normalizedMatrix[i][j] = criteria[j]?.direction === 'max'
+          normalizedMatrix[i][j] = direction === 'max'
             ? (value - minVal) / range
             : (maxVal - value) / range;
         } else {
-          // Linear (default)
-          if (criteria[j]?.direction === 'max') {
+          // Linear (default) - most common
+          if (direction === 'max') {
             normalizedMatrix[i][j] = value / maxVal;
           } else {
-            normalizedMatrix[i][j] = value !== 0 ? minVal / value : 0;
+            // For min criteria: smaller is better
+            normalizedMatrix[i][j] = value > 0 ? minVal / value : 0;
           }
         }
       }
@@ -85,19 +108,23 @@ export const MCDMCalculator: React.FC<Props> = ({ initialData, onDataChange }) =
 
     if (logic?.aggregation === 'Distance-to-Ideal') {
       // TOPSIS-like approach
+      const weightedMatrix = normalizedMatrix.map(row =>
+        row.map((v, j) => v * effectiveWeights[j])
+      );
+
       const idealPositive = criteria.map((c, j) => {
-        const vals = normalizedMatrix.map(row => row[j] * (c.weight || 0));
-        return c.direction === 'max' ? Math.max(...vals) : Math.min(...vals);
+        const vals = weightedMatrix.map(row => row[j]);
+        return (c.direction || 'max') === 'max' ? Math.max(...vals) : Math.min(...vals);
       });
       const idealNegative = criteria.map((c, j) => {
-        const vals = normalizedMatrix.map(row => row[j] * (c.weight || 0));
-        return c.direction === 'max' ? Math.min(...vals) : Math.max(...vals);
+        const vals = weightedMatrix.map(row => row[j]);
+        return (c.direction || 'max') === 'max' ? Math.min(...vals) : Math.max(...vals);
       });
 
       scores = matrix.map((_, i) => {
         let dPlus = 0, dMinus = 0;
         for (let j = 0; j < numCrit; j++) {
-          const weighted = normalizedMatrix[i][j] * (criteria[j]?.weight || 0);
+          const weighted = weightedMatrix[i][j];
           dPlus += Math.pow(weighted - idealPositive[j], 2);
           dMinus += Math.pow(weighted - idealNegative[j], 2);
         }
@@ -110,11 +137,11 @@ export const MCDMCalculator: React.FC<Props> = ({ initialData, onDataChange }) =
         };
       });
     } else {
-      // Weighted Sum (SAW) - default
+      // Weighted Sum (SAW) - default and most common
       scores = matrix.map((_, i) => {
         let score = 0;
         for (let j = 0; j < numCrit; j++) {
-          score += normalizedMatrix[i][j] * (criteria[j]?.weight || 0);
+          score += normalizedMatrix[i][j] * effectiveWeights[j];
         }
         return {
           alternative: alternatives[i] || `A${i + 1}`,
@@ -122,6 +149,8 @@ export const MCDMCalculator: React.FC<Props> = ({ initialData, onDataChange }) =
         };
       });
     }
+
+    console.log('📊 Scores:', scores);
 
     return scores
       .sort((a, b) => b.score - a.score)
