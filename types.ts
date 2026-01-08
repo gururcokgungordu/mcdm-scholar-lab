@@ -27,6 +27,23 @@ export interface MethodologyModule {
   normalization: NormalizationType;
   aggregation: AggregationLogic;
   defuzzification: string; // Method used: e.g. "Centroid", "Mean of Maximum"
+  weightingMethod?: string; // AHP, BWM, Direct, etc.
+}
+
+// Linguistic scale definition
+export interface LinguisticScale {
+  term: string;        // e.g., "Very High", "High", "Medium"
+  fuzzyNumber: number[] | number; // Crisp: single number, Fuzzy: [l, m, u] or [l, m1, m2, u]
+  crispValue: number;  // Defuzzified value
+}
+
+// Expert evaluation for criteria or alternatives
+export interface ExpertEvaluation {
+  expertId: string;
+  expertName?: string;
+  evaluations: {
+    [criterionOrAlternative: string]: string | number; // Linguistic term or direct value
+  };
 }
 
 export interface MCDMAnalysis {
@@ -39,7 +56,13 @@ export interface MCDMAnalysis {
   matrix: number[][];
   originalRanking: { alternative: string; score: number; rank: number }[];
   summary: string;
-  logicModule: MethodologyModule; // New: Atomic parts
+  logicModule: MethodologyModule;
+
+  // Expert evaluation data
+  linguisticScale?: LinguisticScale[];
+  expertEvaluations?: ExpertEvaluation[];
+  expertWeightMatrix?: (string | number)[][]; // Raw expert inputs (can be linguistic or numeric)
+  aggregatedWeights?: number[]; // Final aggregated weights from experts
 }
 
 export interface GlobalMethodology {

@@ -53,8 +53,9 @@ IMPORTANT: MCDM papers can have MANY different structures. Be FLEXIBLE and ADAPT
 YOUR ANALYSIS APPROACH:
 1. First, READ the entire paper methodology section carefully
 2. Identify ALL stages/steps of the MCDM process described
-3. Extract data from ALL relevant tables - not just one
-4. Understand the MATHEMATICAL FLOW from input to final ranking
+3. Extract data from ALL relevant tables - including EXPERT EVALUATION TABLES
+4. Extract the LINGUISTIC SCALE used (if any) - e.g., "Very High = (0.7, 0.9, 1.0)"
+5. Understand the MATHEMATICAL FLOW from input to final ranking
 
 Return a JSON object with:
 {
@@ -68,25 +69,63 @@ Return a JSON object with:
   "matrix": [[numeric_values_row_1], [numeric_values_row_2]],
   "originalRanking": [{"alternative": "Name", "score": 0.XXXX, "rank": 1}],
   "summary": "Comprehensive summary of the methodology",
+  
+  "linguisticScale": [
+    {"term": "Very High", "fuzzyNumber": [0.7, 0.9, 1.0], "crispValue": 0.87},
+    {"term": "High", "fuzzyNumber": [0.5, 0.7, 0.9], "crispValue": 0.70},
+    {"term": "Medium", "fuzzyNumber": [0.3, 0.5, 0.7], "crispValue": 0.50},
+    {"term": "Low", "fuzzyNumber": [0.1, 0.3, 0.5], "crispValue": 0.30},
+    {"term": "Very Low", "fuzzyNumber": [0, 0.1, 0.3], "crispValue": 0.13}
+  ],
+  
+  "expertEvaluations": [
+    {
+      "expertId": "E1",
+      "expertName": "Expert 1 (or DM1)",
+      "evaluations": {
+        "Criterion1": "High",
+        "Criterion2": "Very High"
+      }
+    }
+  ],
+  
+  "expertWeightMatrix": [
+    ["Expert/Criterion", "C1", "C2", "C3"],
+    ["Expert 1", "High", "Medium", "Very High"],
+    ["Expert 2", "Medium", "High", "High"]
+  ],
+  
   "logicModule": {
-    "fuzzyType": "Crisp/Triangular/etc.",
+    "fuzzyType": "Crisp/Triangular/Trapezoidal/Type-2/Intuitionistic/Spherical",
     "normalization": "Vector/Linear/Max-Min/Sum/None",
     "aggregation": "Distance-to-Ideal/Weighted-Sum/Outranking",
-    "defuzzification": "Centroid/None",
-    "weightingMethod": "AHP/BWM/CRITIC/Direct/Equal"
+    "defuzzification": "Centroid/Mean-of-Maximum/Alpha-cut/None",
+    "weightingMethod": "AHP/ANP/BWM/CRITIC/Entropy/SWARA/Direct/FAHP/FBWM"
   },
+  
   "dataQuality": {
     "hasCompleteCriteria": true/false,
     "hasCompleteMatrix": true/false,
     "hasWeights": true/false,
     "hasRanking": true/false,
+    "hasExpertData": true/false,
+    "hasLinguisticScale": true/false,
     "missingData": ["List any data that couldn't be extracted"],
     "notes": "Any important notes"
   }
 }
 
-CRITICAL: Extract ALL data visible in tables. OUTPUT ONLY VALID JSON.
+EXPERT EVALUATION EXTRACTION RULES:
+1. Look for tables with expert opinions/evaluations on criteria or alternatives
+2. Expert tables often have headers like "DM1, DM2, DM3" or "Expert 1, Expert 2"
+3. Values can be linguistic terms (VH, H, M, L, VL) or numbers (1-9 scale, 0-1 scale)
+4. If linguistic scale is defined in the paper, extract EXACTLY as written
+5. If not defined, use common triangular fuzzy scale as default
+6. Convert any abbreviations: VH=Very High, H=High, M=Medium, L=Low, VL=Very Low
+
+CRITICAL: Extract ALL data visible in tables including expert evaluations. OUTPUT ONLY VALID JSON.
 `;
+
 
 function validateAndFixAnalysis(analysis) {
     if (!Array.isArray(analysis.criteria)) analysis.criteria = [];

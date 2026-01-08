@@ -2,6 +2,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { MCDMAnalysis, Criterion } from '../types';
 import * as XLSX from 'xlsx';
+import { ExpertEvaluationPanel } from './ExpertEvaluationPanel';
 
 interface Props {
   initialData: MCDMAnalysis;
@@ -17,6 +18,7 @@ export const MCDMCalculator: React.FC<Props> = ({ initialData, onDataChange }) =
   const [matrix, setMatrix] = useState<number[][]>(initialData.matrix || []);
   const [criteria, setCriteria] = useState<Criterion[]>(initialData.criteria || []);
   const [alternatives, setAlternatives] = useState<string[]>(initialData.alternatives || []);
+  const [showExpertPanel, setShowExpertPanel] = useState(false);
   const chartRef = useRef<HTMLDivElement>(null);
 
   // Sync with parent data changes
@@ -419,6 +421,41 @@ export const MCDMCalculator: React.FC<Props> = ({ initialData, onDataChange }) =
             ))}
           </div>
         </div>
+      )}
+
+      {/* Expert Evaluation Panel Toggle */}
+      <div className="flex items-center justify-between bg-purple-50 p-4 rounded-xl border border-purple-200">
+        <div>
+          <h4 className="font-bold text-purple-800 text-sm">Uzman Değerlendirmeleri</h4>
+          <p className="text-xs text-purple-600 mt-0.5">
+            {(initialData as any).expertWeightMatrix?.length > 0
+              ? 'Makaleden uzman değerlendirmesi çıkarıldı'
+              : 'Dilsel ölçekle kriter ağırlıklarını hesaplayın'}
+          </p>
+        </div>
+        <button
+          onClick={() => setShowExpertPanel(!showExpertPanel)}
+          className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${showExpertPanel
+              ? 'bg-purple-600 text-white'
+              : 'bg-white text-purple-600 border border-purple-300 hover:bg-purple-100'
+            }`}
+        >
+          {showExpertPanel ? 'Paneli Kapat' : 'Paneli Aç'}
+        </button>
+      </div>
+
+      {/* Expert Evaluation Panel */}
+      {showExpertPanel && (
+        <ExpertEvaluationPanel
+          analysis={initialData}
+          onWeightsCalculated={(weights) => {
+            const newCriteria = criteria.map((c, i) => ({
+              ...c,
+              weight: weights[i] || c.weight
+            }));
+            setCriteria(newCriteria);
+          }}
+        />
       )}
 
       {/* Export Bar */}

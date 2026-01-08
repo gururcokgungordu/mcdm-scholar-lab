@@ -71,61 +71,67 @@ IMPORTANT: MCDM papers can have MANY different structures. Be FLEXIBLE and ADAPT
 - Some have hybrid methods (AHP-TOPSIS, BWM-VIKOR, etc.)
 - Some normalize before weighting, some after
 - Some have pairwise comparison matrices, some have direct weights
+- Some have EXPERT EVALUATION TABLES with linguistic terms
 
 YOUR ANALYSIS APPROACH:
 1. First, READ the entire paper methodology section carefully
 2. Identify ALL stages/steps of the MCDM process described
-3. Extract data from ALL relevant tables - not just one
-4. Understand the MATHEMATICAL FLOW from input to final ranking
+3. Extract data from ALL relevant tables - including EXPERT EVALUATION TABLES
+4. Extract the LINGUISTIC SCALE used (if any)
+5. Understand the MATHEMATICAL FLOW from input to final ranking
 
 FLEXIBLE EXTRACTION - Capture whatever the paper contains:
 
 {
   "method": "Complete method name including all hybrid parts (e.g., 'Fuzzy AHP-TOPSIS')",
   "applicationArea": "The specific application domain",
-  "fuzzySystem": "Fuzzy system type or 'Crisp' - be specific (e.g., 'Triangular Fuzzy Numbers', 'Interval Type-2 Fuzzy')",
+  "fuzzySystem": "Fuzzy system type or 'Crisp' - be specific",
   "numberSet": "Description of number representation used",
   
   "methodologySteps": [
-    {"step": 1, "name": "Step name (e.g., 'Weight calculation with AHP')", "description": "Brief description of what happens"},
-    {"step": 2, "name": "Next step name", "description": "Description"}
+    {"step": 1, "name": "Step name", "description": "Brief description"}
   ],
   
   "criteria": [
-    {"name": "Full criterion name", "weight": 0.XX, "direction": "max or min", "category": "optional category if exists"}
+    {"name": "Full criterion name", "weight": 0.XX, "direction": "max or min"}
   ],
   
   "alternatives": ["Alternative 1 full name", "Alternative 2 full name"],
   
-  "matrix": [
-    [numeric_values_row_1],
-    [numeric_values_row_2]
+  "matrix": [[numeric_values_row_1], [numeric_values_row_2]],
+  
+  "linguisticScale": [
+    {"term": "Very High", "fuzzyNumber": [0.7, 0.9, 1.0], "crispValue": 0.87},
+    {"term": "High", "fuzzyNumber": [0.5, 0.7, 0.9], "crispValue": 0.70},
+    {"term": "Medium", "fuzzyNumber": [0.3, 0.5, 0.7], "crispValue": 0.50},
+    {"term": "Low", "fuzzyNumber": [0.1, 0.3, 0.5], "crispValue": 0.30},
+    {"term": "Very Low", "fuzzyNumber": [0, 0.1, 0.3], "crispValue": 0.13}
   ],
   
-  "intermediateData": {
-    "pairwiseMatrix": "If AHP/ANP used, extract comparison matrix as 2D array or null",
-    "normalizedMatrix": "If paper shows normalized matrix separately, include it or null",
-    "weightedMatrix": "If paper shows weighted normalized matrix, include it or null",
-    "distances": "If TOPSIS/VIKOR, include D+, D- values or null",
-    "otherTables": "Any other important numerical tables as object or null"
-  },
-  
-  "originalRanking": [
-    {"alternative": "Name", "score": 0.XXXX, "rank": 1}
+  "expertEvaluations": [
+    {
+      "expertId": "E1",
+      "expertName": "Expert 1 or DM1",
+      "evaluations": {"Criterion1": "High", "Criterion2": "Very High"}
+    }
   ],
   
-  "equations": [
-    {"name": "Main equation name", "formula": "LaTeX or text representation of key formulas used"}
+  "expertWeightMatrix": [
+    ["Expert/Criterion", "C1", "C2", "C3"],
+    ["Expert 1", "High", "Medium", "Very High"],
+    ["Expert 2", "Medium", "High", "High"]
   ],
   
-  "summary": "Comprehensive summary of the methodology including all stages",
+  "originalRanking": [{"alternative": "Name", "score": 0.XXXX, "rank": 1}],
+  
+  "summary": "Comprehensive summary of the methodology",
   
   "logicModule": {
-    "fuzzyType": "Crisp/Triangular/Trapezoidal/Type-2/Intuitionistic/Spherical/Picture/etc.",
-    "normalization": "Vector/Linear/Logarithmic/Max-Min/Sum/None",
-    "aggregation": "Distance-to-Ideal/Weighted-Sum/Outranking/Ratio-System/Scoring-Function",
+    "fuzzyType": "Crisp/Triangular/Trapezoidal/Type-2/Intuitionistic/Spherical",
+    "normalization": "Vector/Linear/Max-Min/Sum/None",
+    "aggregation": "Distance-to-Ideal/Weighted-Sum/Outranking",
     "defuzzification": "Centroid/Mean-of-Maximum/Alpha-cut/None",
-    "weightingMethod": "AHP/ANP/BWM/CRITIC/Entropy/SWARA/Direct/Equal"
+    "weightingMethod": "AHP/ANP/BWM/CRITIC/Entropy/SWARA/Direct/FAHP/FBWM"
   },
   
   "dataQuality": {
@@ -133,21 +139,23 @@ FLEXIBLE EXTRACTION - Capture whatever the paper contains:
     "hasCompleteMatrix": true/false,
     "hasWeights": true/false,
     "hasRanking": true/false,
+    "hasExpertData": true/false,
+    "hasLinguisticScale": true/false,
     "missingData": ["List any data that couldn't be extracted"],
-    "notes": "Any important notes about the extraction"
+    "notes": "Any important notes"
   }
 }
 
-CRITICAL RULES:
-1. Extract ALL data visible in tables - do not skip any rows or columns
-2. If fuzzy numbers are shown, defuzzify to get crisp values for the matrix
-3. If weights are not directly given but calculated via AHP, extract the final weights
-4. If ranking is split across methods, get the final ranking
-5. Be honest in dataQuality about what you couldn't find
-6. If matrix values are linguistic (e.g., "High", "Low"), convert to standard scales
+EXPERT EVALUATION EXTRACTION RULES:
+1. Look for tables with expert opinions on criteria or alternatives
+2. Expert tables often have headers like "DM1, DM2, DM3" or "Expert 1, Expert 2"
+3. Values can be linguistic terms (VH, H, M, L, VL) or numbers (1-9 scale)
+4. If linguistic scale is defined in the paper, extract EXACTLY as written
+5. Convert abbreviations: VH=Very High, H=High, M=Medium, L=Low, VL=Very Low
 
-OUTPUT ONLY VALID JSON. No explanation text before or after.
+CRITICAL: Extract ALL data visible in tables. OUTPUT ONLY VALID JSON.
 `;
+
 
 // POST /api/analyze - Analyze PDF with Gemini
 router.post('/analyze', upload.single('pdf'), async (req, res) => {
