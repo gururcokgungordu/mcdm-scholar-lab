@@ -1,0 +1,5 @@
+{
+  "name": "MCDM Scholar Script Generator",
+  "description": "An advanced academic tool that analyzes MCDM research papers (PDFs) to automatically generate Python scripts for replicating calculation models in Excel.",
+  "requestFramePermissions": []
+}

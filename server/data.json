@@ -1,0 +1,30 @@
+{
+  "users": [
+    {
+      "id": "admin-id",
+      "name": "Principal Investigator",
+      "email": "admin@admin.edu",
+      "password": "admin",
+      "university": "MCDM Global Research",
+      "school": "Management Science",
+      "purpose": "research",
+      "role": "ADMIN",
+      "isPro": true,
+      "createdAt": 1767789947813
+    },
+    {
+      "id": "test-user",
+      "name": "John Scholar",
+      "email": "user@user.com",
+      "password": "user",
+      "university": "Oxford",
+      "school": "Engineering",
+      "purpose": "education",
+      "role": "USER",
+      "isPro": false,
+      "createdAt": 1767789947813
+    }
+  ],
+  "projects": [],
+  "repository": []
+}
