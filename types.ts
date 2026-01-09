@@ -58,11 +58,37 @@ export interface MCDMAnalysis {
   summary: string;
   logicModule: MethodologyModule;
 
+  // Methodology flow
+  methodologySteps?: { step: number; name: string; description: string }[];
+
   // Expert evaluation data
   linguisticScale?: LinguisticScale[];
   expertEvaluations?: ExpertEvaluation[];
-  expertWeightMatrix?: (string | number)[][]; // Raw expert inputs (can be linguistic or numeric)
-  aggregatedWeights?: number[]; // Final aggregated weights from experts
+  expertWeightMatrix?: (string | number)[][]; // Raw expert inputs
+  aggregatedWeights?: number[];
+
+  // All tables extracted from paper
+  allTables?: {
+    linguisticScaleTable?: { tableNumber: string; description: string; data: any[][] };
+    expertEvaluationTables?: { tableNumber: string; description: string; evaluationType: string; headers: string[]; data: any[][] }[];
+    aggregatedMatrix?: { tableNumber: string; description: string; data: any[][] };
+    crispMatrix?: { tableNumber: string; description: string; data: number[][] };
+    weightsTable?: { tableNumber: string; data: any[][] };
+    rankingTable?: { tableNumber: string; data: any[][] };
+  };
+
+  // Data quality assessment
+  dataQuality?: {
+    hasCompleteCriteria: boolean;
+    hasCompleteMatrix: boolean;
+    hasWeights: boolean;
+    hasRanking: boolean;
+    hasExpertData: boolean;
+    hasLinguisticScale: boolean;
+    tablesExtracted?: string[];
+    missingData: string[];
+    notes: string;
+  };
 }
 
 export interface GlobalMethodology {

@@ -62,98 +62,95 @@ const executeWithFallback = async (operation) => {
 };
 
 const PROMPT_TEMPLATE = `
-You are an expert academic analyst specializing in MCDM (Multi-Criteria Decision Making) research papers.
-Your task is to FULLY understand and extract the complete methodology flow from this PDF.
+You are an EXPERT MCDM (Multi-Criteria Decision Making) academic analyst with deep knowledge of fuzzy systems.
 
-IMPORTANT: MCDM papers can have MANY different structures. Be FLEXIBLE and ADAPTIVE:
-- Some papers have 2 stages (weighting + ranking), some have 3+ stages
-- Some use fuzzy numbers, some use crisp values
-- Some have hybrid methods (AHP-TOPSIS, BWM-VIKOR, etc.)
-- Some normalize before weighting, some after
-- Some have pairwise comparison matrices, some have direct weights
-- Some have EXPERT EVALUATION TABLES with linguistic terms
+YOUR MISSION: Extract the COMPLETE methodology from this research paper.
 
-YOUR ANALYSIS APPROACH:
-1. First, READ the entire paper methodology section carefully
-2. Identify ALL stages/steps of the MCDM process described
-3. Extract data from ALL relevant tables - including EXPERT EVALUATION TABLES
-4. Extract the LINGUISTIC SCALE used (if any)
-5. Understand the MATHEMATICAL FLOW from input to final ranking
+## STEP 1: READ THE METHODOLOGY SECTION CAREFULLY
+Understand:
+- What type of fuzzy numbers are used (triangular, spherical, etc.)
+- How experts provide evaluations (linguistic terms, pairwise, direct)
+- The conversion: Linguistic → Fuzzy → Aggregation → Defuzzification → Crisp
+- Which MCDM method is applied (TOPSIS, VIKOR, AHP, etc.)
 
-FLEXIBLE EXTRACTION - Capture whatever the paper contains:
+## STEP 2: EXTRACT ALL TABLES
+Papers typically have:
+- Linguistic Scale Table (VL, L, M, H, VH definitions)
+- Expert Evaluation Tables (raw expert ratings)
+- Aggregated Fuzzy Matrix
+- Defuzzified/Crisp Matrix
+- Weights Table
+- Ranking Table
 
+## OUTPUT JSON:
 {
-  "method": "Complete method name including all hybrid parts (e.g., 'Fuzzy AHP-TOPSIS')",
-  "applicationArea": "The specific application domain",
-  "fuzzySystem": "Fuzzy system type or 'Crisp' - be specific",
-  "numberSet": "Description of number representation used",
+  "method": "Full method name (e.g., 'Spherical Fuzzy AHP-WASPAS')",
+  "applicationArea": "Specific domain",
+  "fuzzySystem": "Exact fuzzy type (e.g., 'Spherical Fuzzy Sets')",
+  "numberSet": "Number representation",
   
   "methodologySteps": [
-    {"step": 1, "name": "Step name", "description": "Brief description"}
+    {"step": 1, "name": "Step name", "description": "Description"}
   ],
-  
-  "criteria": [
-    {"name": "Full criterion name", "weight": 0.XX, "direction": "max or min"}
-  ],
-  
-  "alternatives": ["Alternative 1 full name", "Alternative 2 full name"],
-  
-  "matrix": [[numeric_values_row_1], [numeric_values_row_2]],
   
   "linguisticScale": [
-    {"term": "Very High", "fuzzyNumber": [0.7, 0.9, 1.0], "crispValue": 0.87},
-    {"term": "High", "fuzzyNumber": [0.5, 0.7, 0.9], "crispValue": 0.70},
-    {"term": "Medium", "fuzzyNumber": [0.3, 0.5, 0.7], "crispValue": 0.50},
-    {"term": "Low", "fuzzyNumber": [0.1, 0.3, 0.5], "crispValue": 0.30},
-    {"term": "Very Low", "fuzzyNumber": [0, 0.1, 0.3], "crispValue": 0.13}
+    {"term": "Very High", "abbreviation": "VH", "fuzzyNumber": [0.7, 0.9, 1.0], "crispValue": 0.87},
+    {"term": "High", "abbreviation": "H", "fuzzyNumber": [0.5, 0.7, 0.9], "crispValue": 0.70},
+    {"term": "Medium", "abbreviation": "M", "fuzzyNumber": [0.3, 0.5, 0.7], "crispValue": 0.50},
+    {"term": "Low", "abbreviation": "L", "fuzzyNumber": [0.1, 0.3, 0.5], "crispValue": 0.30},
+    {"term": "Very Low", "abbreviation": "VL", "fuzzyNumber": [0, 0.1, 0.3], "crispValue": 0.13}
   ],
   
-  "expertEvaluations": [
-    {
-      "expertId": "E1",
-      "expertName": "Expert 1 or DM1",
-      "evaluations": {"Criterion1": "High", "Criterion2": "Very High"}
-    }
-  ],
+  "allTables": {
+    "linguisticScaleTable": {"tableNumber": "Table X", "data": []},
+    "expertEvaluationTables": [{"tableNumber": "Table X", "headers": [], "data": []}],
+    "aggregatedMatrix": {"tableNumber": "Table X", "data": []},
+    "crispMatrix": {"tableNumber": "Table X", "data": []},
+    "weightsTable": {"tableNumber": "Table X", "data": []},
+    "rankingTable": {"tableNumber": "Table X", "data": []}
+  },
+  
+  "criteria": [{"name": "Full name", "weight": 0.XX, "direction": "max|min"}],
+  "alternatives": ["Full names exactly as in paper"],
+  "matrix": [[crisp_values_row1], [crisp_values_row2]],
+  "originalRanking": [{"alternative": "Name", "score": 0.XXXX, "rank": 1}],
   
   "expertWeightMatrix": [
     ["Expert/Criterion", "C1", "C2", "C3"],
-    ["Expert 1", "High", "Medium", "Very High"],
-    ["Expert 2", "Medium", "High", "High"]
+    ["DM1", "H", "VH", "M"]
   ],
   
-  "originalRanking": [{"alternative": "Name", "score": 0.XXXX, "rank": 1}],
-  
-  "summary": "Comprehensive summary of the methodology",
-  
   "logicModule": {
-    "fuzzyType": "Crisp/Triangular/Trapezoidal/Type-2/Intuitionistic/Spherical",
-    "normalization": "Vector/Linear/Max-Min/Sum/None",
-    "aggregation": "Distance-to-Ideal/Weighted-Sum/Outranking",
-    "defuzzification": "Centroid/Mean-of-Maximum/Alpha-cut/None",
-    "weightingMethod": "AHP/ANP/BWM/CRITIC/Entropy/SWARA/Direct/FAHP/FBWM"
+    "fuzzyType": "Crisp|Triangular|Spherical|Picture|Neutrosophic|etc",
+    "normalization": "Vector|Linear|Max-Min|Sum|None",
+    "aggregation": "Distance-to-Ideal|Weighted-Sum|WASPAS|EDAS|CODAS",
+    "defuzzification": "Centroid|Score-Function|None",
+    "weightingMethod": "AHP|FAHP|BWM|FBWM|CRITIC|Entropy|SWARA|Direct"
   },
   
+  "summary": "Detailed methodology description",
+  
   "dataQuality": {
-    "hasCompleteCriteria": true/false,
-    "hasCompleteMatrix": true/false,
-    "hasWeights": true/false,
-    "hasRanking": true/false,
-    "hasExpertData": true/false,
-    "hasLinguisticScale": true/false,
-    "missingData": ["List any data that couldn't be extracted"],
-    "notes": "Any important notes"
+    "hasCompleteCriteria": true,
+    "hasCompleteMatrix": true,
+    "hasWeights": true,
+    "hasRanking": true,
+    "hasExpertData": true,
+    "hasLinguisticScale": true,
+    "tablesExtracted": ["Table 3", "Table 4", "Table 5"],
+    "missingData": [],
+    "notes": ""
   }
 }
 
-EXPERT EVALUATION EXTRACTION RULES:
-1. Look for tables with expert opinions on criteria or alternatives
-2. Expert tables often have headers like "DM1, DM2, DM3" or "Expert 1, Expert 2"
-3. Values can be linguistic terms (VH, H, M, L, VL) or numbers (1-9 scale)
-4. If linguistic scale is defined in the paper, extract EXACTLY as written
-5. Convert abbreviations: VH=Very High, H=High, M=Medium, L=Low, VL=Very Low
+CRITICAL RULES:
+1. Extract EVERY table - don't skip any
+2. Understand abbreviations: VL, L, AL, M, H, VH, AH, etc.
+3. "matrix" must contain CRISP (defuzzified) values
+4. If weights are linguistic, convert to crisp
+5. Note BENEFIT (max) vs COST (min) criteria
 
-CRITICAL: Extract ALL data visible in tables. OUTPUT ONLY VALID JSON.
+OUTPUT ONLY VALID JSON.
 `;
 
 
