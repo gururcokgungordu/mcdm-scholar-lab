@@ -15,6 +15,7 @@ import {
   createLinguisticLookup,
   linguisticToFuzzyMatrix
 } from '../utils/fuzzyMath';
+import { calculateMCDM, detectMCDMMethod, MCDMMethodName } from '../utils/mcdmEngine';
 
 interface Props {
   initialData: MCDMAnalysis;
@@ -54,13 +55,6 @@ export const MCDMCalculator: React.FC<Props> = ({ initialData, onDataChange }) =
     }
   }, [matrix, criteria, alternatives]);
 
-  // Import MCDM Engine
-  const calculateWithEngine = useMemo(() => {
-    // Dynamic import hack for browser
-    const engine = require('../utils/mcdmEngine');
-    return engine;
-  }, []);
-
   // State for selected method
   const [selectedMethod, setSelectedMethod] = useState<string>('auto');
 
@@ -77,12 +71,12 @@ export const MCDMCalculator: React.FC<Props> = ({ initialData, onDataChange }) =
       : criteria.map(() => 1 / numCrit);
 
     // Get directions
-    const directions = criteria.map(c => c.direction || 'max');
+    const directions = criteria.map(c => c.direction || 'max') as ('max' | 'min')[];
 
     // Detect or use selected method
-    let method = selectedMethod;
+    let method: MCDMMethodName | string = selectedMethod;
     if (method === 'auto') {
-      method = calculateWithEngine?.detectMCDMMethod?.(initialData) || 'TOPSIS';
+      method = detectMCDMMethod(initialData);
     }
 
     console.log('🔢 MCDM Calculation:', {
@@ -94,11 +88,11 @@ export const MCDMCalculator: React.FC<Props> = ({ initialData, onDataChange }) =
 
     try {
       // Use MCDM Engine
-      const result = calculateWithEngine?.calculateMCDM?.(
+      const result = calculateMCDM(
         method,
         matrix,
         effectiveWeights,
-        directions as ('max' | 'min')[]
+        directions
       );
 
       if (!result) {
@@ -120,7 +114,7 @@ export const MCDMCalculator: React.FC<Props> = ({ initialData, onDataChange }) =
       console.error('MCDM Calculation error:', error);
       return [];
     }
-  }, [matrix, criteria, alternatives, initialData, selectedMethod, calculateWithEngine]);
+  }, [matrix, criteria, alternatives, initialData, selectedMethod]);
 
   // Handlers
   const handleCellChange = (rowIndex: number, colIndex: number, value: string) => {
