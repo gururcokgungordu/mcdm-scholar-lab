@@ -3,6 +3,18 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { MCDMAnalysis, Criterion } from '../types';
 import * as XLSX from 'xlsx';
 import { ExpertEvaluationPanel } from './ExpertEvaluationPanel';
+import {
+  TriangularFuzzyNumber,
+  parseFuzzyNumber,
+  isFuzzy,
+  Defuzzification,
+  FuzzyArithmetic,
+  FuzzyNormalization,
+  FuzzyAggregation,
+  fuzzyTOPSIS,
+  createLinguisticLookup,
+  linguisticToFuzzyMatrix
+} from '../utils/fuzzyMath';
 
 interface Props {
   initialData: MCDMAnalysis;
@@ -19,6 +31,8 @@ export const MCDMCalculator: React.FC<Props> = ({ initialData, onDataChange }) =
   const [criteria, setCriteria] = useState<Criterion[]>(initialData.criteria || []);
   const [alternatives, setAlternatives] = useState<string[]>(initialData.alternatives || []);
   const [showExpertPanel, setShowExpertPanel] = useState(false);
+  const [calculationMode, setCalculationMode] = useState<'crisp' | 'fuzzy'>('crisp');
+  const [defuzzMethod, setDefuzzMethod] = useState<'centroid' | 'gradedMean' | 'meanOfMax'>('centroid');
   const chartRef = useRef<HTMLDivElement>(null);
 
   // Sync with parent data changes
@@ -40,124 +54,73 @@ export const MCDMCalculator: React.FC<Props> = ({ initialData, onDataChange }) =
     }
   }, [matrix, criteria, alternatives]);
 
-  // Flexible calculation based on methodology
+  // Import MCDM Engine
+  const calculateWithEngine = useMemo(() => {
+    // Dynamic import hack for browser
+    const engine = require('../utils/mcdmEngine');
+    return engine;
+  }, []);
+
+  // State for selected method
+  const [selectedMethod, setSelectedMethod] = useState<string>('auto');
+
+  // Calculate using MCDM Engine
   const results = useMemo(() => {
     if (!matrix || matrix.length === 0 || !criteria || criteria.length === 0) return [];
 
-    const numAlts = matrix.length;
     const numCrit = criteria.length;
-    const logic = initialData.logicModule;
 
-    // IMPORTANT: Check if weights exist, if not use equal weights
+    // Check if weights exist, if not use equal weights
     const weightSum = criteria.reduce((sum, c) => sum + (c.weight || 0), 0);
     const effectiveWeights = weightSum > 0.001
       ? criteria.map(c => c.weight || 0)
-      : criteria.map(() => 1 / numCrit); // Equal weights fallback
+      : criteria.map(() => 1 / numCrit);
 
-    console.log('🔢 Calculation Debug:', {
-      numAlts,
-      numCrit,
-      weightSum,
-      effectiveWeights,
-      matrixSample: matrix[0]
+    // Get directions
+    const directions = criteria.map(c => c.direction || 'max');
+
+    // Detect or use selected method
+    let method = selectedMethod;
+    if (method === 'auto') {
+      method = calculateWithEngine?.detectMCDMMethod?.(initialData) || 'TOPSIS';
+    }
+
+    console.log('🔢 MCDM Calculation:', {
+      method,
+      numAlternatives: matrix.length,
+      numCriteria: numCrit,
+      weights: effectiveWeights
     });
 
-    // Step 1: Normalize based on method type
-    const normalizedMatrix: number[][] = [];
-
-    for (let i = 0; i < numAlts; i++) {
-      normalizedMatrix[i] = [];
-      for (let j = 0; j < numCrit; j++) {
-        normalizedMatrix[i][j] = 0;
-      }
-    }
-
-    for (let j = 0; j < numCrit; j++) {
-      const colValues = matrix.map(row => row[j] || 0);
-      const maxVal = Math.max(...colValues, 0.0001);
-      const minVal = Math.min(...colValues.filter(v => v > 0), maxVal * 0.001); // Better fallback
-      const sumSquares = Math.sqrt(colValues.reduce((sum, v) => sum + v * v, 0)) || 0.0001;
-      const colSum = colValues.reduce((a, b) => a + b, 0) || 0.0001;
-
-      for (let i = 0; i < numAlts; i++) {
-        const value = matrix[i]?.[j] || 0;
-        const direction = criteria[j]?.direction || 'max';
-
-        // Apply normalization based on method
-        if (logic?.normalization === 'Vector') {
-          normalizedMatrix[i][j] = value / sumSquares;
-        } else if (logic?.normalization === 'Sum') {
-          normalizedMatrix[i][j] = value / colSum;
-        } else if (logic?.normalization === 'Max-Min') {
-          const range = maxVal - minVal || 1;
-          normalizedMatrix[i][j] = direction === 'max'
-            ? (value - minVal) / range
-            : (maxVal - value) / range;
-        } else {
-          // Linear (default) - most common
-          if (direction === 'max') {
-            normalizedMatrix[i][j] = value / maxVal;
-          } else {
-            // For min criteria: smaller is better
-            normalizedMatrix[i][j] = value > 0 ? minVal / value : 0;
-          }
-        }
-      }
-    }
-
-    // Step 2: Calculate scores based on aggregation method
-    let scores: { alternative: string; score: number }[] = [];
-
-    if (logic?.aggregation === 'Distance-to-Ideal') {
-      // TOPSIS-like approach
-      const weightedMatrix = normalizedMatrix.map(row =>
-        row.map((v, j) => v * effectiveWeights[j])
+    try {
+      // Use MCDM Engine
+      const result = calculateWithEngine?.calculateMCDM?.(
+        method,
+        matrix,
+        effectiveWeights,
+        directions as ('max' | 'min')[]
       );
 
-      const idealPositive = criteria.map((c, j) => {
-        const vals = weightedMatrix.map(row => row[j]);
-        return (c.direction || 'max') === 'max' ? Math.max(...vals) : Math.min(...vals);
-      });
-      const idealNegative = criteria.map((c, j) => {
-        const vals = weightedMatrix.map(row => row[j]);
-        return (c.direction || 'max') === 'max' ? Math.min(...vals) : Math.max(...vals);
-      });
+      if (!result) {
+        console.error('MCDM Engine returned null');
+        return [];
+      }
 
-      scores = matrix.map((_, i) => {
-        let dPlus = 0, dMinus = 0;
-        for (let j = 0; j < numCrit; j++) {
-          const weighted = weightedMatrix[i][j];
-          dPlus += Math.pow(weighted - idealPositive[j], 2);
-          dMinus += Math.pow(weighted - idealNegative[j], 2);
-        }
-        dPlus = Math.sqrt(dPlus);
-        dMinus = Math.sqrt(dMinus);
-        const closeness = dMinus / (dPlus + dMinus + 0.0001);
-        return {
-          alternative: alternatives[i] || `A${i + 1}`,
-          score: parseFloat(closeness.toFixed(6))
-        };
-      });
-    } else {
-      // Weighted Sum (SAW) - default and most common
-      scores = matrix.map((_, i) => {
-        let score = 0;
-        for (let j = 0; j < numCrit; j++) {
-          score += normalizedMatrix[i][j] * effectiveWeights[j];
-        }
-        return {
-          alternative: alternatives[i] || `A${i + 1}`,
-          score: parseFloat(score.toFixed(6))
-        };
-      });
+      // Format results
+      const formattedScores = result.scores.map((score: number, i: number) => ({
+        alternative: alternatives[i] || `A${i + 1}`,
+        score: parseFloat(score.toFixed(6)),
+        rank: result.ranking[i]
+      }));
+
+      console.log('📊 Results:', formattedScores);
+
+      return formattedScores.sort((a: any, b: any) => a.rank - b.rank);
+    } catch (error) {
+      console.error('MCDM Calculation error:', error);
+      return [];
     }
-
-    console.log('📊 Scores:', scores);
-
-    return scores
-      .sort((a, b) => b.score - a.score)
-      .map((s, idx) => ({ ...s, rank: idx + 1 }));
-  }, [matrix, criteria, alternatives, initialData.logicModule]);
+  }, [matrix, criteria, alternatives, initialData, selectedMethod, calculateWithEngine]);
 
   // Handlers
   const handleCellChange = (rowIndex: number, colIndex: number, value: string) => {
@@ -436,8 +399,8 @@ export const MCDMCalculator: React.FC<Props> = ({ initialData, onDataChange }) =
         <button
           onClick={() => setShowExpertPanel(!showExpertPanel)}
           className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${showExpertPanel
-              ? 'bg-purple-600 text-white'
-              : 'bg-white text-purple-600 border border-purple-300 hover:bg-purple-100'
+            ? 'bg-purple-600 text-white'
+            : 'bg-white text-purple-600 border border-purple-300 hover:bg-purple-100'
             }`}
         >
           {showExpertPanel ? 'Paneli Kapat' : 'Paneli Aç'}
@@ -480,6 +443,89 @@ export const MCDMCalculator: React.FC<Props> = ({ initialData, onDataChange }) =
           >
             Export Chart (300 DPI)
           </button>
+        </div>
+      </div>
+
+      {/* Calculation Mode Selector */}
+      <div className="flex flex-wrap items-center gap-4 bg-gradient-to-r from-blue-50 to-cyan-50 p-4 rounded-xl border border-blue-200">
+        {/* MCDM Method Selector */}
+        <div>
+          <span className="text-xs font-bold text-blue-800 block mb-1">MCDM Metodu</span>
+          <select
+            value={selectedMethod}
+            onChange={(e) => setSelectedMethod(e.target.value)}
+            className="px-3 py-2 text-xs font-medium border border-blue-200 rounded-lg bg-white min-w-[140px]"
+          >
+            <option value="auto">🔍 Otomatik Tespit</option>
+            <optgroup label="Distance-based">
+              <option value="TOPSIS">TOPSIS</option>
+              <option value="VIKOR">VIKOR</option>
+              <option value="EDAS">EDAS</option>
+              <option value="CODAS">CODAS</option>
+            </optgroup>
+            <optgroup label="Weighted Methods">
+              <option value="SAW">SAW (Weighted Sum)</option>
+              <option value="WPM">WPM (Weighted Product)</option>
+              <option value="WASPAS">WASPAS</option>
+            </optgroup>
+            <optgroup label="Other Methods">
+              <option value="MOORA">MOORA</option>
+              <option value="COPRAS">COPRAS</option>
+              <option value="ARAS">ARAS</option>
+            </optgroup>
+          </select>
+        </div>
+
+        {/* Fuzzy/Crisp Toggle */}
+        <div>
+          <span className="text-xs font-bold text-blue-800 block mb-1">Hesaplama Tipi</span>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setCalculationMode('crisp')}
+              className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${calculationMode === 'crisp'
+                ? 'bg-blue-600 text-white'
+                : 'bg-white text-blue-600 border border-blue-300'
+                }`}
+            >
+              Crisp
+            </button>
+            <button
+              onClick={() => setCalculationMode('fuzzy')}
+              className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${calculationMode === 'fuzzy'
+                ? 'bg-purple-600 text-white'
+                : 'bg-white text-purple-600 border border-purple-300'
+                }`}
+            >
+              Fuzzy
+            </button>
+          </div>
+        </div>
+
+        {calculationMode === 'fuzzy' && (
+          <>
+            <div>
+              <span className="text-xs font-bold text-purple-800 block mb-1">Defuzzification</span>
+              <select
+                value={defuzzMethod}
+                onChange={(e) => setDefuzzMethod(e.target.value as any)}
+                className="px-3 py-2 text-xs border border-purple-200 rounded-lg bg-white"
+              >
+                <option value="centroid">Centroid</option>
+                <option value="gradedMean">Graded Mean</option>
+                <option value="meanOfMax">Mean of Max</option>
+              </select>
+            </div>
+          </>
+        )}
+
+        {/* Detected Method Info */}
+        <div className="flex items-center gap-2 bg-emerald-100 px-3 py-2 rounded-lg">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span className="text-xs text-emerald-700">
+            Aktif: <strong>{selectedMethod === 'auto' ? (initialData.method?.split(' ')[0] || 'TOPSIS') : selectedMethod}</strong>
+          </span>
         </div>
       </div>
 
