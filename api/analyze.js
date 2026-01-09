@@ -484,16 +484,48 @@ export default async function handler(req, res) {
         }],
         generationConfig: {
           responseMimeType: 'application/json',
-          temperature: 0.0
+          temperature: 0.1
         }
       });
-      return JSON.parse(result.response.text());
+
+      let responseText = result.response.text();
+
+      // Clean up response - remove markdown code blocks if present
+      responseText = responseText.trim();
+      if (responseText.startsWith('```json')) {
+        responseText = responseText.slice(7);
+      } else if (responseText.startsWith('```')) {
+        responseText = responseText.slice(3);
+      }
+      if (responseText.endsWith('```')) {
+        responseText = responseText.slice(0, -3);
+      }
+      responseText = responseText.trim();
+
+      try {
+        return JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('JSON Parse Error:', parseError.message);
+        console.error('Response text (first 500 chars):', responseText.substring(0, 500));
+
+        // Try to extract JSON from response
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          return JSON.parse(jsonMatch[0]);
+        }
+
+        throw new Error('Failed to parse AI response as JSON');
+      }
     });
 
     const validatedAnalysis = validateAndFixAnalysis(analysis);
     res.json(validatedAnalysis);
   } catch (error) {
     console.error('Analyze error:', error);
-    res.status(500).json({ error: error.message || 'Failed to analyze PDF' });
+    res.status(500).json({
+      error: error.message || 'Failed to analyze PDF',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 }
+
