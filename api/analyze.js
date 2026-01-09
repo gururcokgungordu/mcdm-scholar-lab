@@ -357,9 +357,52 @@ function validateAndFixAnalysis(analysis) {
 
     // Extract matrix values from new format (rows instead of values)
     if (analysis.decision_matrix?.rows) {
-      transformed.matrix = analysis.decision_matrix.rows.map(row => row.values || []);
+      transformed.matrix = analysis.decision_matrix.rows.map(row => {
+        const values = row.values || [];
+        // If values are arrays (fuzzy), defuzzify them
+        return values.map(v => {
+          if (Array.isArray(v)) {
+            return (v[0] + v[1] + v[2]) / 3; // Centroid defuzzification
+          }
+          return typeof v === 'number' ? v : 0;
+        });
+      });
     } else if (analysis.decision_matrix?.values) {
-      transformed.matrix = analysis.decision_matrix.values.map(row => row.scores || row.values || []);
+      transformed.matrix = analysis.decision_matrix.values.map(row => {
+        const values = row.scores || row.values || [];
+        return values.map(v => {
+          if (Array.isArray(v)) {
+            return (v[0] + v[1] + v[2]) / 3;
+          }
+          return typeof v === 'number' ? v : 0;
+        });
+      });
+    }
+
+    // Extract fuzzy matrix if available
+    if (analysis.decision_matrix?.fuzzy_rows) {
+      transformed.fuzzyMatrix = analysis.decision_matrix.fuzzy_rows.map(row => {
+        const values = row.values || [];
+        return values.map(v => {
+          if (Array.isArray(v) && v.length >= 3) {
+            return { l: v[0], m: v[1], u: v[2] };
+          }
+          const num = typeof v === 'number' ? v : 0;
+          return { l: num, m: num, u: num };
+        });
+      });
+    }
+
+    // Detect criteria data types (crisp vs fuzzy)
+    if (analysis.criteria && analysis.decision_matrix) {
+      transformed.criteriaDataTypes = analysis.criteria.map((c, idx) => {
+        // Check if this criterion has fuzzy data
+        const hasFuzzy = analysis.decision_matrix?.fuzzy_rows?.some(row => {
+          const val = row.values?.[idx];
+          return Array.isArray(val) && val.length >= 3;
+        });
+        return hasFuzzy ? 'fuzzy' : 'crisp';
+      });
     }
 
     // Extract linguistic scales (new flat format)

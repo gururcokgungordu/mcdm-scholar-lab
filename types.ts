@@ -1,9 +1,19 @@
 
 export type CriterionDirection = 'max' | 'min';
 export type UserRole = 'USER' | 'PRO' | 'ADMIN';
-export type FuzzyNumberType = 'Crisp' | 'Triangular' | 'Trapezoidal' | 'Type-2' | 'Intuitionistic';
-export type NormalizationType = 'Vector' | 'Linear' | 'Logarithmic';
+export type FuzzyNumberType = 'Crisp' | 'Triangular' | 'Trapezoidal' | 'Type-2' | 'Intuitionistic' | 'Spherical' | 'Picture' | 'Pythagorean' | 'Fermatean';
+export type NormalizationType = 'Vector' | 'Linear' | 'Logarithmic' | 'MinMax' | 'Sum';
 export type AggregationLogic = 'Distance-to-Ideal' | 'Weighted-Sum' | 'Outranking' | 'Ratio-System';
+
+// Triangular Fuzzy Number type
+export interface TriangularFuzzyNumber {
+  l: number; // Lower
+  m: number; // Middle
+  u: number; // Upper
+}
+
+// Generic fuzzy value - can be crisp or any fuzzy type
+export type FuzzyValue = number | TriangularFuzzyNumber | number[];
 
 export interface User {
   id: string;
@@ -20,6 +30,9 @@ export interface Criterion {
   name: string;
   weight: number;
   direction: CriterionDirection;
+  code?: string;
+  isFuzzy?: boolean; // Indicates if this criterion uses fuzzy values
+  fuzzyWeight?: TriangularFuzzyNumber; // Fuzzy weight if applicable
 }
 
 export interface MethodologyModule {
@@ -28,11 +41,13 @@ export interface MethodologyModule {
   aggregation: AggregationLogic;
   defuzzification: string; // Method used: e.g. "Centroid", "Mean of Maximum"
   weightingMethod?: string; // AHP, BWM, Direct, etc.
+  rankingMethod?: string; // TOPSIS, VIKOR, etc.
 }
 
 // Linguistic scale definition
 export interface LinguisticScale {
   term: string;        // e.g., "Very High", "High", "Medium"
+  abbreviation?: string; // e.g., "VH", "H", "M"
   fuzzyNumber: number[] | number; // Crisp: single number, Fuzzy: [l, m, u] or [l, m1, m2, u]
   crispValue: number;  // Defuzzified value
 }
@@ -53,7 +68,16 @@ export interface MCDMAnalysis {
   numberSet: string;
   criteria: Criterion[];
   alternatives: string[];
+
+  // Decision matrix - crisp values (defuzzified)
   matrix: number[][];
+
+  // Fuzzy decision matrix - triangular fuzzy numbers
+  fuzzyMatrix?: TriangularFuzzyNumber[][];
+
+  // Mixed matrix data type indicator per criterion
+  criteriaDataTypes?: ('crisp' | 'fuzzy' | 'linguistic')[];
+
   originalRanking: { alternative: string; score: number; rank: number }[];
   summary: string;
   logicModule: MethodologyModule;
