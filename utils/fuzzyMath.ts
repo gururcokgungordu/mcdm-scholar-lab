@@ -376,3 +376,279 @@ export function aggregateExpertEvaluations(
 
     return aggregated;
 }
+
+// ============================================
+// FUZZIFICATION METHODS
+// Crisp → Fuzzy conversion
+// ============================================
+
+export const Fuzzification = {
+    /**
+     * Triangular fuzzification with spread percentage
+     * Creates a fuzzy number by adding uncertainty around crisp value
+     * @param crisp - The crisp value
+     * @param spread - Percentage spread (default 20% = 0.2)
+     */
+    triangularSpread: (crisp: number, spread: number = 0.2): TriangularFuzzyNumber => {
+        const delta = crisp * spread;
+        return {
+            l: Math.max(0, crisp - delta),
+            m: crisp,
+            u: crisp + delta
+        };
+    },
+
+    /**
+     * Triangular fuzzification with absolute bounds
+     * @param crisp - The crisp value (becomes middle)
+     * @param lower - Absolute lower bound
+     * @param upper - Absolute upper bound
+     */
+    triangularAbsolute: (crisp: number, lower: number, upper: number): TriangularFuzzyNumber => ({
+        l: lower,
+        m: crisp,
+        u: upper
+    }),
+
+    /**
+     * Triangular fuzzification based on scale range
+     * Useful when you know the min/max of the scale
+     * @param crisp - The crisp value
+     * @param scaleMin - Minimum possible value in scale
+     * @param scaleMax - Maximum possible value in scale
+     * @param spreadRatio - Spread as ratio of scale range (default 0.1)
+     */
+    triangularScaled: (crisp: number, scaleMin: number, scaleMax: number, spreadRatio: number = 0.1): TriangularFuzzyNumber => {
+        const range = scaleMax - scaleMin;
+        const delta = range * spreadRatio;
+        return {
+            l: Math.max(scaleMin, crisp - delta),
+            m: crisp,
+            u: Math.min(scaleMax, crisp + delta)
+        };
+    },
+
+    /**
+     * Gaussian-based triangular fuzzification
+     * Uses standard deviation to determine spread
+     * @param crisp - The crisp value
+     * @param sigma - Standard deviation (spread factor)
+     */
+    gaussianTriangular: (crisp: number, sigma: number = 0.1): TriangularFuzzyNumber => ({
+        l: crisp - 2 * sigma,
+        m: crisp,
+        u: crisp + 2 * sigma
+    }),
+
+    /**
+     * Map crisp value to nearest linguistic term's fuzzy number
+     * @param crisp - The crisp value (0-1 range typically)
+     * @param scale - Linguistic scale with fuzzy numbers
+     */
+    toLinguistic: (
+        crisp: number,
+        scale: { term: string; crispValue: number; fuzzyNumber: number[] }[]
+    ): TriangularFuzzyNumber => {
+        // Find closest linguistic term
+        let closest = scale[0];
+        let minDiff = Math.abs(crisp - scale[0].crispValue);
+
+        for (const item of scale) {
+            const diff = Math.abs(crisp - item.crispValue);
+            if (diff < minDiff) {
+                minDiff = diff;
+                closest = item;
+            }
+        }
+
+        return {
+            l: closest.fuzzyNumber[0],
+            m: closest.fuzzyNumber[1],
+            u: closest.fuzzyNumber[2]
+        };
+    },
+
+    /**
+     * Trapezoidal fuzzification
+     * Creates 4-tuple fuzzy number
+     */
+    trapezoidal: (crisp: number, spreadLower: number = 0.2, plateau: number = 0.05): TrapezoidalFuzzyNumber => {
+        const deltaL = crisp * spreadLower;
+        const deltaP = crisp * plateau;
+        return {
+            a: Math.max(0, crisp - deltaL),
+            b: Math.max(0, crisp - deltaP),
+            c: crisp + deltaP,
+            d: crisp + deltaL
+        };
+    }
+};
+
+// ============================================
+// HYBRID CALCULATION SUPPORT
+// Mixed Fuzzy/Crisp data handling
+// ============================================
+
+export type MixedValue = number | TriangularFuzzyNumber | string;
+
+export interface HybridMatrixConfig {
+    fuzzyColumns: number[];      // Indices of columns that are fuzzy
+    crispColumns: number[];      // Indices of columns that are crisp
+    linguisticScale?: { term: string; fuzzyNumber: number[]; crispValue: number }[];
+    defaultSpread?: number;      // Spread for crispToFuzzy conversion
+}
+
+/**
+ * Process a mixed matrix containing both fuzzy and crisp values
+ * Converts everything to a unified format
+ */
+export function processHybridMatrix(
+    matrix: MixedValue[][],
+    config: HybridMatrixConfig,
+    outputFormat: 'fuzzy' | 'crisp' = 'fuzzy'
+): number[][] | TriangularFuzzyNumber[][] {
+    const lookup = config.linguisticScale
+        ? createLinguisticLookup(config.linguisticScale as any)
+        : new Map<string, TriangularFuzzyNumber>();
+
+    const spread = config.defaultSpread || 0.2;
+
+    if (outputFormat === 'fuzzy') {
+        // Convert everything to fuzzy
+        return matrix.map(row =>
+            row.map((cell, j) => {
+                // Already fuzzy
+                if (isFuzzy(cell)) return cell;
+
+                // Linguistic term
+                if (typeof cell === 'string') {
+                    const key = cell.toLowerCase().trim();
+                    return lookup.get(key) || Fuzzification.triangularSpread(0.5, spread);
+                }
+
+                // Crisp number - fuzzify it
+                return Fuzzification.triangularSpread(cell, spread);
+            })
+        );
+    } else {
+        // Convert everything to crisp
+        return matrix.map(row =>
+            row.map((cell, j) => {
+                // Already crisp
+                if (typeof cell === 'number') return cell;
+
+                // Fuzzy - defuzzify
+                if (isFuzzy(cell)) return Defuzzification.centroid(cell);
+
+                // Linguistic term - get crisp value
+                if (typeof cell === 'string') {
+                    const key = cell.toLowerCase().trim();
+                    const fuzzy = lookup.get(key);
+                    return fuzzy ? Defuzzification.centroid(fuzzy) : 0.5;
+                }
+
+                return 0;
+            })
+        );
+    }
+}
+
+/**
+ * Detect data type for each column in a matrix
+ */
+export function detectColumnTypes(
+    matrix: MixedValue[][]
+): ('fuzzy' | 'crisp' | 'linguistic' | 'mixed')[] {
+    if (matrix.length === 0) return [];
+
+    const numCols = matrix[0].length;
+    const types: ('fuzzy' | 'crisp' | 'linguistic' | 'mixed')[] = [];
+
+    for (let j = 0; j < numCols; j++) {
+        const colValues = matrix.map(row => row[j]);
+
+        let hasFuzzy = false;
+        let hasCrisp = false;
+        let hasLinguistic = false;
+
+        for (const val of colValues) {
+            if (isFuzzy(val)) hasFuzzy = true;
+            else if (typeof val === 'number') hasCrisp = true;
+            else if (typeof val === 'string') hasLinguistic = true;
+        }
+
+        const count = [hasFuzzy, hasCrisp, hasLinguistic].filter(Boolean).length;
+
+        if (count > 1) types.push('mixed');
+        else if (hasFuzzy) types.push('fuzzy');
+        else if (hasLinguistic) types.push('linguistic');
+        else types.push('crisp');
+    }
+
+    return types;
+}
+
+/**
+ * Calculate uncertainty/spread measure for a fuzzy matrix
+ * Higher values indicate more uncertainty in the data
+ */
+export function calculateUncertainty(matrix: TriangularFuzzyNumber[][]): number {
+    let totalSpread = 0;
+    let count = 0;
+
+    for (const row of matrix) {
+        for (const cell of row) {
+            const spread = (cell.u - cell.l) / (cell.m || 1);
+            totalSpread += spread;
+            count++;
+        }
+    }
+
+    return count > 0 ? totalSpread / count : 0;
+}
+
+/**
+ * Default linguistic scales for common MCDM applications
+ */
+export const DEFAULT_SCALES = {
+    // Standard 5-level triangular scale (0-1)
+    triangular5: [
+        { term: 'Very Low', abbreviation: 'VL', fuzzyNumber: [0, 0.1, 0.3], crispValue: 0.13 },
+        { term: 'Low', abbreviation: 'L', fuzzyNumber: [0.1, 0.3, 0.5], crispValue: 0.30 },
+        { term: 'Medium', abbreviation: 'M', fuzzyNumber: [0.3, 0.5, 0.7], crispValue: 0.50 },
+        { term: 'High', abbreviation: 'H', fuzzyNumber: [0.5, 0.7, 0.9], crispValue: 0.70 },
+        { term: 'Very High', abbreviation: 'VH', fuzzyNumber: [0.7, 0.9, 1.0], crispValue: 0.87 }
+    ],
+
+    // 7-level scale
+    triangular7: [
+        { term: 'Absolutely Low', abbreviation: 'AL', fuzzyNumber: [0, 0, 0.1], crispValue: 0.03 },
+        { term: 'Very Low', abbreviation: 'VL', fuzzyNumber: [0, 0.1, 0.3], crispValue: 0.13 },
+        { term: 'Low', abbreviation: 'L', fuzzyNumber: [0.1, 0.3, 0.5], crispValue: 0.30 },
+        { term: 'Medium', abbreviation: 'M', fuzzyNumber: [0.3, 0.5, 0.7], crispValue: 0.50 },
+        { term: 'High', abbreviation: 'H', fuzzyNumber: [0.5, 0.7, 0.9], crispValue: 0.70 },
+        { term: 'Very High', abbreviation: 'VH', fuzzyNumber: [0.7, 0.9, 1.0], crispValue: 0.87 },
+        { term: 'Absolutely High', abbreviation: 'AH', fuzzyNumber: [0.9, 1.0, 1.0], crispValue: 0.97 }
+    ],
+
+    // Saaty AHP scale (1-9, crisp for AHP)
+    saaty9: [
+        { term: 'Equal', abbreviation: '1', fuzzyNumber: [1, 1, 1], crispValue: 1 },
+        { term: 'Moderate', abbreviation: '3', fuzzyNumber: [2, 3, 4], crispValue: 3 },
+        { term: 'Strong', abbreviation: '5', fuzzyNumber: [4, 5, 6], crispValue: 5 },
+        { term: 'Very Strong', abbreviation: '7', fuzzyNumber: [6, 7, 8], crispValue: 7 },
+        { term: 'Extreme', abbreviation: '9', fuzzyNumber: [8, 9, 9], crispValue: 9 }
+    ],
+
+    // Fuzzy AHP triangular scale
+    fuzzyAHP: [
+        { term: 'Equal', abbreviation: 'E', fuzzyNumber: [1, 1, 1], crispValue: 1 },
+        { term: 'Weak', abbreviation: 'W', fuzzyNumber: [1, 2, 3], crispValue: 2 },
+        { term: 'Moderate', abbreviation: 'M', fuzzyNumber: [2, 3, 4], crispValue: 3 },
+        { term: 'Strong', abbreviation: 'S', fuzzyNumber: [3, 4, 5], crispValue: 4 },
+        { term: 'Very Strong', abbreviation: 'VS', fuzzyNumber: [4, 5, 6], crispValue: 5 },
+        { term: 'Demonstrated', abbreviation: 'D', fuzzyNumber: [5, 6, 7], crispValue: 6 },
+        { term: 'Extreme', abbreviation: 'EX', fuzzyNumber: [7, 8, 9], crispValue: 8 }
+    ]
+};
+
