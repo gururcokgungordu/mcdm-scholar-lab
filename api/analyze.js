@@ -45,234 +45,88 @@ const executeWithFallback = async (operation) => {
 };
 
 const PROMPT_TEMPLATE = `
-# MISSION
-You are the **MCDM Logic Compiler** for a dynamic research platform. Your goal is to analyze the provided academic paper and convert its methodology into a **Linear Execution Pipeline** (JSON format).
+You are an EXPERT MCDM (Multi-Criteria Decision Making) academic analyst. Extract the COMPLETE methodology from this research paper.
 
-This JSON will be fed into a TypeScript engine that treats every calculation step as a modular "Lego block."
+## CRITICAL: YOU MUST EXTRACT THE DECISION MATRIX
+The decision matrix is the core data table showing alternatives (rows) vs criteria (columns) with numerical values.
+If you cannot find a complete numerical matrix, look for:
+- Tables with alternatives on rows and criteria on columns
+- Fuzzy number tables like (0.3, 0.5, 0.7) - convert using centroid: (l+m+u)/3
+- Linguistic evaluation tables - convert using the paper's linguistic scale
 
-# CRITICAL INSTRUCTION ON LOGIC FLOW
-1. **NO Assumptions:** Do NOT assume a standard flow. AHP has no "Distance Calculation". TOPSIS has no "Pairwise Comparison". Detect the SPECIFIC steps used in this paper.
-2. **Dynamic Steps:** Your output execution_pipeline must list operations in the EXACT order they occur in the paper.
-3. **Hybrid Detection:** If paper uses AHP for weights and VIKOR for ranking, the pipeline must show: ConstructPairwiseMatrix -> CalculateConsistency -> CalculateWeights -> ConstructDecisionMatrix -> NormalizeMatrix -> CalculateDistances -> RankAlternatives
-
-# TYPESCRIPT INTERFACE CONTRACT
-Strictly adhere to these type definitions. Output ONLY valid JSON matching MCDMStudyConfig.
-
-## TYPE DEFINITIONS:
-FuzzyType = "Crisp" | "Triangular" | "Trapezoidal" | "Spherical" | "Intuitionistic" | "Picture" | "Pythagorean" | "Fermatean"
-
-OperationType = 
-  "DefineLinguisticScales"      // Step 0: Define VL, L, M, H, VH with fuzzy values
-  "ConstructPairwiseMatrix"     // For AHP/ANP: Create comparison matrix
-  "CalculateConsistency"        // For AHP: Check CR < 0.1
-  "CollectExpertEvaluations"    // Gather expert linguistic/numeric ratings
-  "AggregateFuzzy"              // Combine multiple expert fuzzy opinions
-  "Defuzzify"                   // Convert fuzzy to crisp values
-  "ConstructDecisionMatrix"     // Build alternatives x criteria matrix
-  "NormalizeMatrix"             // Vector, Linear, MaxMin, Sum normalization
-  "CalculateWeights"            // Entropy, CRITIC, AHP eigenvector, BWM
-  "ApplyWeights"                // Multiply matrix by weights
-  "DetermineIdealSolutions"     // Find PIS/NIS (for TOPSIS)
-  "CalculateDistances"          // Euclidean, Hamming, Vertex distance
-  "CalculateSRQ"                // For VIKOR: S, R, Q values
-  "CalculateAggregatedScore"    // For SAW, WASPAS, ARAS, COPRAS
-  "CalculatePDA_NDA"            // For EDAS: Positive/Negative Distance from Average
-  "CalculateUtilityDegree"      // For ARAS, COPRAS
-  "RankAlternatives"            // Final ranking step
-
-# JSON SCHEMA - MCDMStudyConfig:
+## REQUIRED OUTPUT - JSON FORMAT:
 
 {
   "meta": {
-    "title": "Paper title or brief description",
-    "methodology_summary": "One sentence describing the complete methodology flow",
-    "main_fuzzy_type": "Crisp | Triangular | Trapezoidal | Spherical | Intuitionistic | Picture",
-    "is_hybrid": true,
-    "weighting_method": "AHP | BWM | CRITIC | Entropy | Direct | FAHP | SWARA",
-    "ranking_method": "TOPSIS | VIKOR | EDAS | CODAS | MOORA | SAW | WASPAS | ARAS | COPRAS",
-    "application_domain": "e.g., Supplier Selection, Renewable Energy, Healthcare"
+    "title": "Paper title",
+    "methodology_summary": "Brief description of the methodology",
+    "main_fuzzy_type": "Crisp | Triangular | Trapezoidal | Spherical",
+    "weighting_method": "AHP | BWM | CRITIC | Entropy | Direct | FAHP",
+    "ranking_method": "TOPSIS | VIKOR | EDAS | CODAS | MOORA | SAW | WASPAS",
+    "application_domain": "e.g., Supplier Selection, Energy"
   },
 
   "linguistic_scales": [
-    {
-      "name": "Criteria Importance Scale",
-      "label": "VH",
-      "short_code": "VH",
-      "full_text": "Very High",
-      "value": [0.7, 0.9, 1.0],
-      "crisp": 0.87
-    },
-    {
-      "name": "Criteria Importance Scale",
-      "label": "H",
-      "short_code": "H", 
-      "full_text": "High",
-      "value": [0.5, 0.7, 0.9],
-      "crisp": 0.70
-    }
+    { "label": "VH", "full_text": "Very High", "value": [0.7, 0.9, 1.0], "crisp": 0.87 },
+    { "label": "H", "full_text": "High", "value": [0.5, 0.7, 0.9], "crisp": 0.70 },
+    { "label": "M", "full_text": "Medium", "value": [0.3, 0.5, 0.7], "crisp": 0.50 },
+    { "label": "L", "full_text": "Low", "value": [0.1, 0.3, 0.5], "crisp": 0.30 },
+    { "label": "VL", "full_text": "Very Low", "value": [0.0, 0.1, 0.3], "crisp": 0.13 }
   ],
 
   "criteria": [
     {
       "code": "C1",
-      "name": "Full criterion name from paper",
+      "name": "Full criterion name",
       "direction": "benefit | cost",
-      "weight": 0.25,
-      "weight_source": "calculated | given | expert"
+      "weight": 0.25
     }
   ],
 
   "alternatives": [
-    { "code": "A1", "name": "Full alternative name from paper" }
+    { "code": "A1", "name": "Full alternative name" }
   ],
 
   "decision_matrix": {
-    "type": "crisp | fuzzy | linguistic",
+    "type": "crisp | fuzzy",
     "rows": [
-      { "alternative": "A1", "values": [0.7, 0.85, 0.6, 0.9] }
+      { "alternative": "A1", "values": [0.7, 0.85, 0.6, 0.9] },
+      { "alternative": "A2", "values": [0.5, 0.7, 0.8, 0.75] }
     ],
     "fuzzy_rows": [
-      { "alternative": "A1", "values": [[0.5,0.7,0.9], [0.7,0.85,1.0]] }
+      { "alternative": "A1", "values": [[0.5,0.7,0.9], [0.7,0.85,1.0], [0.4,0.6,0.8]] }
     ]
   },
-
-  "execution_pipeline": [
-    {
-      "step_id": 1,
-      "operation": "DefineLinguisticScales",
-      "description": "Define linguistic terms and their fuzzy number equivalents",
-      "config": {},
-      "input_source": "paper_table"
-    },
-    {
-      "step_id": 2,
-      "operation": "CollectExpertEvaluations",
-      "description": "Experts rate criteria and alternatives using linguistic terms",
-      "config": {
-        "num_experts": 3,
-        "evaluation_type": "linguistic"
-      },
-      "input_source": "expert_input"
-    },
-    {
-      "step_id": 3,
-      "operation": "AggregateFuzzy",
-      "description": "Combine expert opinions using geometric mean",
-      "config": {
-        "aggregation_func": "GeometricMean"
-      },
-      "input_source": "Step_2_Output"
-    },
-    {
-      "step_id": 4,
-      "operation": "Defuzzify",
-      "description": "Convert fuzzy numbers to crisp values",
-      "config": {
-        "method": "Centroid"
-      },
-      "input_source": "Step_3_Output"
-    },
-    {
-      "step_id": 5,
-      "operation": "ConstructDecisionMatrix",
-      "description": "Build the decision matrix with crisp values",
-      "config": {},
-      "input_source": "Step_4_Output"
-    },
-    {
-      "step_id": 6,
-      "operation": "NormalizeMatrix",
-      "description": "Normalize decision matrix",
-      "config": {
-        "normalization_formula": "Vector | Linear_Max | Linear_Sum | Min_Max"
-      },
-      "input_source": "Step_5_Output"
-    },
-    {
-      "step_id": 7,
-      "operation": "CalculateWeights",
-      "description": "Calculate criteria weights",
-      "config": {
-        "method_name": "AHP | Entropy | CRITIC | BWM | Direct"
-      },
-      "input_source": "expert_pairwise | decision_matrix"
-    },
-    {
-      "step_id": 8,
-      "operation": "ApplyWeights",
-      "description": "Multiply normalized matrix by weights",
-      "config": {},
-      "input_source": ["Step_6_Output", "Step_7_Output"]
-    },
-    {
-      "step_id": 9,
-      "operation": "DetermineIdealSolutions",
-      "description": "Find positive and negative ideal solutions",
-      "config": {},
-      "input_source": "Step_8_Output"
-    },
-    {
-      "step_id": 10,
-      "operation": "CalculateDistances",
-      "description": "Calculate distance to ideal solutions",
-      "config": {
-        "distance_metric": "Euclidean | Vertex | Hamming"
-      },
-      "input_source": ["Step_8_Output", "Step_9_Output"]
-    },
-    {
-      "step_id": 11,
-      "operation": "RankAlternatives",
-      "description": "Calculate closeness coefficient and rank",
-      "config": {
-        "lambda_val": 0.5
-      },
-      "input_source": "Step_10_Output"
-    }
-  ],
 
   "original_results": {
     "ranking": [
       { "alternative": "A1", "score": 0.785, "rank": 1 },
       { "alternative": "A2", "score": 0.623, "rank": 2 }
-    ],
-    "best_alternative": "A1"
+    ]
   },
 
-  "extracted_tables": [
-    { "table_id": "Table 3", "content": "Linguistic scale definition", "extracted": true },
-    { "table_id": "Table 4", "content": "Expert evaluations", "extracted": true }
+  "execution_pipeline": [
+    { "step_id": 1, "operation": "ConstructDecisionMatrix", "description": "Build decision matrix" },
+    { "step_id": 2, "operation": "NormalizeMatrix", "description": "Normalize using vector method" },
+    { "step_id": 3, "operation": "CalculateWeights", "description": "Calculate criteria weights" },
+    { "step_id": 4, "operation": "RankAlternatives", "description": "Apply TOPSIS ranking" }
   ]
 }
 
-# METHOD-SPECIFIC PIPELINE PATTERNS
+## EXTRACTION RULES:
+1. **DECISION MATRIX IS MANDATORY** - Extract numerical values for each alternative-criterion pair
+2. If fuzzy numbers like (0.3, 0.5, 0.7) exist, put them in fuzzy_rows AND calculate crisp values for rows
+3. criteria.direction: "benefit" if higher is better, "cost" if lower is better
+4. Extract ALL criteria with their weights if provided
+5. Extract ALL alternatives with their names
 
-## For TOPSIS papers, expect these operations:
-DefineLinguisticScales -> CollectExpertEvaluations -> AggregateFuzzy -> Defuzzify -> ConstructDecisionMatrix -> NormalizeMatrix -> CalculateWeights -> ApplyWeights -> DetermineIdealSolutions -> CalculateDistances -> RankAlternatives
+## FOR FUZZY PAPERS:
+- If values are triangular fuzzy numbers (l, m, u), include in fuzzy_rows
+- Also provide defuzzified crisp values in rows using: (l + m + u) / 3
+- Extract the linguistic scale table with exact fuzzy number definitions
 
-## For VIKOR papers, expect:
-... -> NormalizeMatrix -> CalculateWeights -> CalculateSRQ -> RankAlternatives
-
-## For AHP-based weight calculation, include:
-ConstructPairwiseMatrix -> CalculateConsistency -> CalculateWeights (with method_name: "AHP")
-
-## For EDAS papers:
-... -> CalculatePDA_NDA -> RankAlternatives
-
-## For SAW/WASPAS/ARAS/COPRAS:
-... -> CalculateAggregatedScore -> RankAlternatives
-
-# EXTRACTION RULES
-1. Read the METHODOLOGY section FIRST to understand the flow
-2. Extract ALL linguistic scales with EXACT fuzzy numbers from the paper
-3. Identify ALL criteria with their benefit/cost direction
-4. Map each calculation step to the appropriate OperationType
-5. Include ONLY the operations that are actually used in this paper
-6. Do NOT include operations from other methods (e.g., no DetermineIdealSolutions for VIKOR)
-
-OUTPUT ONLY THE JSON OBJECT. NO OTHER TEXT, NO MARKDOWN, NO CODE BLOCKS.
+OUTPUT ONLY VALID JSON. NO MARKDOWN, NO EXPLANATION.
 `;
-
 
 
 
@@ -289,10 +143,10 @@ function validateAndFixAnalysis(analysis) {
 
       // Map criteria from new format
       criteria: (analysis.criteria || []).map((c, i) => ({
-        name: c.name || c.code || `Criterion ${i + 1}`,
+        name: c.name || c.code || `Criterion ${i + 1} `,
         weight: parseFloat(c.weight) || 0,
         direction: c.direction === 'cost' ? 'min' : 'max',
-        code: c.code || `C${i + 1}`,
+        code: c.code || `C${i + 1} `,
         category: c.category || ''
       })),
 
@@ -349,7 +203,7 @@ function validateAndFixAnalysis(analysis) {
         notes: ''
       },
 
-      summary: analysis.meta.methodology_summary || `${analysis.meta.ranking_method} applied to ${analysis.meta.application_domain}`,
+      summary: analysis.meta.methodology_summary || `${analysis.meta.ranking_method} applied to ${analysis.meta.application_domain} `,
 
       // Keep original new format data
       _rawAnalysis: analysis
@@ -463,7 +317,7 @@ function validateAndFixAnalysis(analysis) {
   });
 
   analysis.criteria = analysis.criteria.map((c, i) => ({
-    name: c.name || `Criterion ${i + 1}`,
+    name: c.name || `Criterion ${i + 1} `,
     weight: parseFloat(c.weight) || 0,
     direction: c.direction === 'min' || c.direction === 'cost' ? 'min' : 'max'
   }));
