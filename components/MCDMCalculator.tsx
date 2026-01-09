@@ -143,6 +143,35 @@ export const MCDMCalculator: React.FC<Props> = ({ initialData, onDataChange }) =
     setMatrix(newMatrix);
   };
 
+  // Handler for fuzzy cell changes (l, m, u components)
+  const handleFuzzyCellChange = (rowIndex: number, colIndex: number, component: 'l' | 'm' | 'u', value: string) => {
+    if (!fuzzyMatrix) return;
+
+    const num = value === "" ? 0 : parseFloat(value);
+    const validNum = isNaN(num) ? 0 : num;
+
+    const newFuzzyMatrix = fuzzyMatrix.map((row, i) =>
+      i === rowIndex
+        ? row.map((cell, j) =>
+          j === colIndex
+            ? { ...cell, [component]: validNum }
+            : cell
+        )
+        : [...row]
+    );
+    setFuzzyMatrix(newFuzzyMatrix);
+
+    // Also update crisp matrix with centroid
+    const updatedCell = newFuzzyMatrix[rowIndex][colIndex];
+    const crispValue = (updatedCell.l + updatedCell.m + updatedCell.u) / 3;
+    const newCrispMatrix = matrix.map((row, i) =>
+      i === rowIndex
+        ? row.map((cell, j) => j === colIndex ? crispValue : cell)
+        : [...row]
+    );
+    setMatrix(newCrispMatrix);
+  };
+
   const handleWeightChange = (index: number, value: string) => {
     const num = value === "" ? 0 : parseFloat(value);
     setCriteria(criteria.map((c, i) => i === index ? { ...c, weight: isNaN(num) ? 0 : num } : c));
@@ -632,11 +661,35 @@ export const MCDMCalculator: React.FC<Props> = ({ initialData, onDataChange }) =
                         return (
                           <td key={j} className={`p-1 ${isFuzzyColumn ? 'bg-purple-50/30' : ''}`}>
                             {hasFuzzyData && calculationMode === 'fuzzy' ? (
-                              // Show fuzzy value
-                              <div className="text-center">
-                                <span className="text-[10px] font-mono text-purple-700 bg-purple-100 px-1.5 py-0.5 rounded">
-                                  ({fuzzyValue.l.toFixed(2)}, {fuzzyValue.m.toFixed(2)}, {fuzzyValue.u.toFixed(2)})
-                                </span>
+                              // Editable fuzzy inputs (l, m, u)
+                              <div className="flex gap-0.5 justify-center">
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={fuzzyValue.l || ''}
+                                  onChange={(e) => handleFuzzyCellChange(i, j, 'l', e.target.value)}
+                                  className="w-12 text-center bg-purple-50 border border-purple-200 rounded py-1 font-mono text-[10px] outline-none focus:border-purple-400"
+                                  placeholder="l"
+                                  title="Lower (l)"
+                                />
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={fuzzyValue.m || ''}
+                                  onChange={(e) => handleFuzzyCellChange(i, j, 'm', e.target.value)}
+                                  className="w-12 text-center bg-purple-100 border border-purple-300 rounded py-1 font-mono text-[10px] outline-none focus:border-purple-500"
+                                  placeholder="m"
+                                  title="Middle (m)"
+                                />
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={fuzzyValue.u || ''}
+                                  onChange={(e) => handleFuzzyCellChange(i, j, 'u', e.target.value)}
+                                  className="w-12 text-center bg-purple-50 border border-purple-200 rounded py-1 font-mono text-[10px] outline-none focus:border-purple-400"
+                                  placeholder="u"
+                                  title="Upper (u)"
+                                />
                               </div>
                             ) : (
                               // Show crisp input
