@@ -1,10 +1,9 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { MCDMAnalysis, Criterion } from '../types';
+import { MCDMAnalysis, Criterion, TriangularFuzzyNumber } from '../types';
 import * as XLSX from 'xlsx';
 import { ExpertEvaluationPanel } from './ExpertEvaluationPanel';
 import {
-  TriangularFuzzyNumber,
   parseFuzzyNumber,
   isFuzzy,
   Defuzzification,
@@ -27,8 +26,20 @@ const CHART_COLORS = [
   '#f43f5e', '#f97316', '#eab308', '#22c55e', '#14b8a6'
 ];
 
+// Helper to format fuzzy number for display
+const formatFuzzyNumber = (tfn: TriangularFuzzyNumber | undefined): string => {
+  if (!tfn) return '-';
+  return `(${tfn.l.toFixed(2)}, ${tfn.m.toFixed(2)}, ${tfn.u.toFixed(2)})`;
+};
+
 export const MCDMCalculator: React.FC<Props> = ({ initialData, onDataChange }) => {
   const [matrix, setMatrix] = useState<number[][]>(initialData.matrix || []);
+  const [fuzzyMatrix, setFuzzyMatrix] = useState<TriangularFuzzyNumber[][] | null>(
+    initialData.fuzzyMatrix || null
+  );
+  const [criteriaDataTypes, setCriteriaDataTypes] = useState<('crisp' | 'fuzzy' | 'linguistic')[]>(
+    initialData.criteriaDataTypes || []
+  );
   const [criteria, setCriteria] = useState<Criterion[]>(initialData.criteria || []);
   const [alternatives, setAlternatives] = useState<string[]>(initialData.alternatives || []);
   const [showExpertPanel, setShowExpertPanel] = useState(false);
@@ -39,8 +50,15 @@ export const MCDMCalculator: React.FC<Props> = ({ initialData, onDataChange }) =
   // Sync with parent data changes
   useEffect(() => {
     setMatrix(initialData.matrix || []);
+    setFuzzyMatrix(initialData.fuzzyMatrix || null);
+    setCriteriaDataTypes(initialData.criteriaDataTypes || []);
     setCriteria(initialData.criteria || []);
     setAlternatives(initialData.alternatives || []);
+
+    // Auto-detect if fuzzy data exists
+    if (initialData.fuzzyMatrix && initialData.fuzzyMatrix.length > 0) {
+      setCalculationMode('fuzzy');
+    }
   }, [initialData]);
 
   // Notify parent of changes
@@ -567,19 +585,32 @@ export const MCDMCalculator: React.FC<Props> = ({ initialData, onDataChange }) =
         <div className="lg:col-span-2 space-y-6">
           {/* Decision Matrix */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="bg-slate-50 px-6 py-4 border-b border-slate-200">
+            <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex items-center justify-between">
               <h3 className="font-bold text-slate-800 text-xs uppercase">Decision Matrix</h3>
+              {fuzzyMatrix && fuzzyMatrix.length > 0 && (
+                <span className="text-xs font-medium text-purple-600 bg-purple-100 px-2 py-1 rounded">
+                  ✨ Fuzzy Data Available
+                </span>
+              )}
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-slate-50/50">
                     <th className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase border-b sticky left-0 bg-slate-50 z-10">Alt</th>
-                    {criteria.map((c, i) => (
-                      <th key={i} className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase border-b text-center min-w-[80px]">
-                        C{i + 1}
-                      </th>
-                    ))}
+                    {criteria.map((c, i) => {
+                      const isFuzzyColumn = criteriaDataTypes[i] === 'fuzzy';
+                      return (
+                        <th
+                          key={i}
+                          className={`px-4 py-3 text-[10px] font-bold uppercase border-b text-center min-w-[100px] ${isFuzzyColumn ? 'text-purple-600 bg-purple-50/50' : 'text-slate-500'
+                            }`}
+                        >
+                          C{i + 1}
+                          {isFuzzyColumn && <span className="block text-[8px] text-purple-400">fuzzy</span>}
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -593,17 +624,33 @@ export const MCDMCalculator: React.FC<Props> = ({ initialData, onDataChange }) =
                           className="w-20 text-xs font-bold text-slate-700 bg-transparent outline-none"
                         />
                       </td>
-                      {row.map((cell, j) => (
-                        <td key={j} className="p-1">
-                          <input
-                            type="number"
-                            value={cell || ''}
-                            onChange={(e) => handleCellChange(i, j, e.target.value)}
-                            className="w-full text-center bg-transparent border-none focus:bg-indigo-50 rounded py-2 font-mono text-xs outline-none"
-                            placeholder="0"
-                          />
-                        </td>
-                      ))}
+                      {row.map((cell, j) => {
+                        const fuzzyValue = fuzzyMatrix?.[i]?.[j];
+                        const isFuzzyColumn = criteriaDataTypes[j] === 'fuzzy';
+                        const hasFuzzyData = fuzzyValue && (fuzzyValue.l !== fuzzyValue.m || fuzzyValue.m !== fuzzyValue.u);
+
+                        return (
+                          <td key={j} className={`p-1 ${isFuzzyColumn ? 'bg-purple-50/30' : ''}`}>
+                            {hasFuzzyData && calculationMode === 'fuzzy' ? (
+                              // Show fuzzy value
+                              <div className="text-center">
+                                <span className="text-[10px] font-mono text-purple-700 bg-purple-100 px-1.5 py-0.5 rounded">
+                                  ({fuzzyValue.l.toFixed(2)}, {fuzzyValue.m.toFixed(2)}, {fuzzyValue.u.toFixed(2)})
+                                </span>
+                              </div>
+                            ) : (
+                              // Show crisp input
+                              <input
+                                type="number"
+                                value={cell || ''}
+                                onChange={(e) => handleCellChange(i, j, e.target.value)}
+                                className="w-full text-center bg-transparent border-none focus:bg-indigo-50 rounded py-2 font-mono text-xs outline-none"
+                                placeholder="0"
+                              />
+                            )}
+                          </td>
+                        );
+                      })}
                     </tr>
                   ))}
                 </tbody>
