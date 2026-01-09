@@ -46,64 +46,69 @@ const executeWithFallback = async (operation) => {
 
 const PROMPT_TEMPLATE = `
 # MISSION
-You are the "Architect Agent" for the MCDM Scholar Lab platform. Your task is to analyze an academic MCDM paper and extract the methodology into a strict JSON configuration that a TypeScript engine can execute step-by-step.
+You are the **MCDM Logic Compiler** for a dynamic research platform. Your goal is to analyze the provided academic paper and convert its methodology into a **Linear Execution Pipeline** (JSON format).
 
-# YOUR TOOLKIT (AVAILABLE LEGO BLOCKS)
-You must ONLY map the paper's logic to these available modules:
+This JSON will be fed into a TypeScript engine that treats every calculation step as a modular "Lego block."
 
-## MCDM METHODS
-- Ranking: TOPSIS, VIKOR, EDAS, CODAS, MOORA, ARAS, COPRAS, PROMETHEE, MULTIMOORA
-- Aggregation: SAW, WPM, WASPAS
-- Weighting: AHP, FAHP, ANP, BWM, CRITIC, ENTROPY, SWARA, PIPRECIA
+# CRITICAL INSTRUCTION ON LOGIC FLOW
+1. **NO Assumptions:** Do NOT assume a standard flow. AHP has no "Distance Calculation". TOPSIS has no "Pairwise Comparison". Detect the SPECIFIC steps used in this paper.
+2. **Dynamic Steps:** Your output execution_pipeline must list operations in the EXACT order they occur in the paper.
+3. **Hybrid Detection:** If paper uses AHP for weights and VIKOR for ranking, the pipeline must show: ConstructPairwiseMatrix -> CalculateConsistency -> CalculateWeights -> ConstructDecisionMatrix -> NormalizeMatrix -> CalculateDistances -> RankAlternatives
 
-## FUZZY TYPES
-Crisp, Triangular, Trapezoidal, Spherical, Intuitionistic, Picture, Pythagorean, Fermatean, Neutrosophic, Type2
+# TYPESCRIPT INTERFACE CONTRACT
+Strictly adhere to these type definitions. Output ONLY valid JSON matching MCDMStudyConfig.
 
-## NORMALIZATION TYPES
-Vector, LinearMax, MinMax, Sum, Logarithmic
+## TYPE DEFINITIONS:
+FuzzyType = "Crisp" | "Triangular" | "Trapezoidal" | "Spherical" | "Intuitionistic" | "Picture" | "Pythagorean" | "Fermatean"
 
-## AGGREGATION OPERATORS
-ArithmeticMean, GeometricMean, WeightedSum, WeightedProduct, OWA
+OperationType = 
+  "DefineLinguisticScales"      // Step 0: Define VL, L, M, H, VH with fuzzy values
+  "ConstructPairwiseMatrix"     // For AHP/ANP: Create comparison matrix
+  "CalculateConsistency"        // For AHP: Check CR < 0.1
+  "CollectExpertEvaluations"    // Gather expert linguistic/numeric ratings
+  "AggregateFuzzy"              // Combine multiple expert fuzzy opinions
+  "Defuzzify"                   // Convert fuzzy to crisp values
+  "ConstructDecisionMatrix"     // Build alternatives x criteria matrix
+  "NormalizeMatrix"             // Vector, Linear, MaxMin, Sum normalization
+  "CalculateWeights"            // Entropy, CRITIC, AHP eigenvector, BWM
+  "ApplyWeights"                // Multiply matrix by weights
+  "DetermineIdealSolutions"     // Find PIS/NIS (for TOPSIS)
+  "CalculateDistances"          // Euclidean, Hamming, Vertex distance
+  "CalculateSRQ"                // For VIKOR: S, R, Q values
+  "CalculateAggregatedScore"    // For SAW, WASPAS, ARAS, COPRAS
+  "CalculatePDA_NDA"            // For EDAS: Positive/Negative Distance from Average
+  "CalculateUtilityDegree"      // For ARAS, COPRAS
+  "RankAlternatives"            // Final ranking step
 
-## DEFUZZIFICATION METHODS
-Centroid, GradedMean, MeanOfMaximum, AlphaCut, ScoreFunction
-
-# CRITICAL RULES
-1. **OUTPUT FORMAT:** Return ONLY valid JSON. No markdown, no explanations, no code blocks.
-2. **SCALE EXTRACTION:** You MUST extract exact numerical values for ALL linguistic terms found in the paper.
-3. **HYBRID LOGIC:** If paper uses AHP for weights + TOPSIS for ranking, create separate steps in execution_pipeline.
-4. **DIRECTIONS:** Every criterion MUST have direction: "cost" (minimize) or "benefit" (maximize).
-5. **MULTI-STAGE:** Detect if the paper has 2-stage, 3-stage or more complex methodology.
-
-# JSON SCHEMA - EXTRACT EXACTLY THIS STRUCTURE:
+# JSON SCHEMA - MCDMStudyConfig:
 
 {
   "meta": {
-    "title": "Paper title or short description",
-    "primary_method": "Main method name (e.g., Spherical Fuzzy TOPSIS)",
-    "fuzzy_type": "Crisp | Triangular | Trapezoidal | Spherical | Intuitionistic | Picture | Pythagorean | Fermatean",
+    "title": "Paper title or brief description",
+    "methodology_summary": "One sentence describing the complete methodology flow",
+    "main_fuzzy_type": "Crisp | Triangular | Trapezoidal | Spherical | Intuitionistic | Picture",
     "is_hybrid": true,
-    "stages": ["Weighting with FAHP", "Ranking with TOPSIS"],
-    "defuzzification_method": "Centroid | GradedMean | ScoreFunction | None",
-    "application_domain": "e.g., Supplier Selection, Energy, Healthcare"
+    "weighting_method": "AHP | BWM | CRITIC | Entropy | Direct | FAHP | SWARA",
+    "ranking_method": "TOPSIS | VIKOR | EDAS | CODAS | MOORA | SAW | WASPAS | ARAS | COPRAS",
+    "application_domain": "e.g., Supplier Selection, Renewable Energy, Healthcare"
   },
 
   "linguistic_scales": [
     {
       "name": "Criteria Importance Scale",
-      "usage": "For expert evaluation of criteria weights",
-      "terms": [
-        { "label": "VH", "full_text": "Very High", "fuzzy_value": [0.7, 0.9, 1.0], "crisp_value": 0.87 },
-        { "label": "H", "full_text": "High", "fuzzy_value": [0.5, 0.7, 0.9], "crisp_value": 0.70 },
-        { "label": "M", "full_text": "Medium", "fuzzy_value": [0.3, 0.5, 0.7], "crisp_value": 0.50 },
-        { "label": "L", "full_text": "Low", "fuzzy_value": [0.1, 0.3, 0.5], "crisp_value": 0.30 },
-        { "label": "VL", "full_text": "Very Low", "fuzzy_value": [0.0, 0.1, 0.3], "crisp_value": 0.13 }
-      ]
+      "label": "VH",
+      "short_code": "VH",
+      "full_text": "Very High",
+      "value": [0.7, 0.9, 1.0],
+      "crisp": 0.87
     },
     {
-      "name": "Alternative Rating Scale",
-      "usage": "For rating alternatives against criteria",
-      "terms": []
+      "name": "Criteria Importance Scale",
+      "label": "H",
+      "short_code": "H", 
+      "full_text": "High",
+      "value": [0.5, 0.7, 0.9],
+      "crisp": 0.70
     }
   ],
 
@@ -112,109 +117,117 @@ Centroid, GradedMean, MeanOfMaximum, AlphaCut, ScoreFunction
       "code": "C1",
       "name": "Full criterion name from paper",
       "direction": "benefit | cost",
-      "category": "Optional category/group",
       "weight": 0.25,
-      "weight_source": "calculated | given | expert_input"
+      "weight_source": "calculated | given | expert"
     }
   ],
 
   "alternatives": [
-    { "code": "A1", "name": "Full alternative name" }
+    { "code": "A1", "name": "Full alternative name from paper" }
   ],
-
-  "expert_evaluations": {
-    "num_experts": 3,
-    "evaluation_type": "linguistic | numeric | pairwise",
-    "criteria_evaluations": [
-      {
-        "expert_id": "DM1",
-        "evaluations": { "C1": "VH", "C2": "H", "C3": "M" }
-      }
-    ],
-    "alternative_evaluations": [
-      {
-        "expert_id": "DM1",
-        "matrix": [
-          ["A1/C1", "H", "VH", "M"],
-          ["A2/C1", "M", "H", "L"]
-        ]
-      }
-    ]
-  },
 
   "decision_matrix": {
     "type": "crisp | fuzzy | linguistic",
-    "values": [
-      { "alternative": "A1", "scores": [0.7, 0.85, 0.6, 0.9] },
-      { "alternative": "A2", "scores": [0.5, 0.7, 0.8, 0.75] }
+    "rows": [
+      { "alternative": "A1", "values": [0.7, 0.85, 0.6, 0.9] }
     ],
-    "fuzzy_values": [
-      { "alternative": "A1", "scores": [[0.5,0.7,0.9], [0.7,0.85,1.0]] }
+    "fuzzy_rows": [
+      { "alternative": "A1", "values": [[0.5,0.7,0.9], [0.7,0.85,1.0]] }
     ]
   },
 
   "execution_pipeline": [
     {
-      "step": 1,
-      "name": "Expert Linguistic Evaluation",
-      "module": "DataCollection",
-      "description": "Experts provide linguistic evaluations for criteria and alternatives",
-      "input": "expert_evaluations",
-      "output": "linguistic_matrix"
+      "step_id": 1,
+      "operation": "DefineLinguisticScales",
+      "description": "Define linguistic terms and their fuzzy number equivalents",
+      "config": {},
+      "input_source": "paper_table"
     },
     {
-      "step": 2,
-      "name": "Fuzzification",
-      "module": "Fuzzification",
-      "method": "LinguisticToFuzzy",
-      "config": { "scale_ref": "Criteria Importance Scale" },
-      "input": "linguistic_matrix",
-      "output": "fuzzy_matrix"
-    },
-    {
-      "step": 3,
-      "name": "Expert Aggregation",
-      "module": "Aggregation",
-      "method": "GeometricMean",
-      "input": "fuzzy_matrix",
-      "output": "aggregated_fuzzy_matrix"
-    },
-    {
-      "step": 4,
-      "name": "Defuzzification",
-      "module": "Defuzzification",
-      "method": "Centroid",
-      "input": "aggregated_fuzzy_matrix",
-      "output": "crisp_matrix"
-    },
-    {
-      "step": 5,
-      "name": "Weight Calculation",
-      "module": "Weighting",
-      "method": "AHP | BWM | CRITIC | Entropy | Direct",
-      "config": { "consistency_check": true },
-      "input": "expert_pairwise | direct_weights",
-      "output": "criteria_weights"
-    },
-    {
-      "step": 6,
-      "name": "Normalization",
-      "module": "Normalization",
-      "method": "Vector | LinearMax | MinMax",
-      "input": "crisp_matrix",
-      "output": "normalized_matrix"
-    },
-    {
-      "step": 7,
-      "name": "MCDM Ranking",
-      "module": "Ranking",
-      "method": "TOPSIS | VIKOR | EDAS | CODAS | MOORA",
+      "step_id": 2,
+      "operation": "CollectExpertEvaluations",
+      "description": "Experts rate criteria and alternatives using linguistic terms",
       "config": {
-        "v_parameter": 0.5,
-        "distance_metric": "Euclidean"
+        "num_experts": 3,
+        "evaluation_type": "linguistic"
       },
-      "input": ["normalized_matrix", "criteria_weights"],
-      "output": "final_ranking"
+      "input_source": "expert_input"
+    },
+    {
+      "step_id": 3,
+      "operation": "AggregateFuzzy",
+      "description": "Combine expert opinions using geometric mean",
+      "config": {
+        "aggregation_func": "GeometricMean"
+      },
+      "input_source": "Step_2_Output"
+    },
+    {
+      "step_id": 4,
+      "operation": "Defuzzify",
+      "description": "Convert fuzzy numbers to crisp values",
+      "config": {
+        "method": "Centroid"
+      },
+      "input_source": "Step_3_Output"
+    },
+    {
+      "step_id": 5,
+      "operation": "ConstructDecisionMatrix",
+      "description": "Build the decision matrix with crisp values",
+      "config": {},
+      "input_source": "Step_4_Output"
+    },
+    {
+      "step_id": 6,
+      "operation": "NormalizeMatrix",
+      "description": "Normalize decision matrix",
+      "config": {
+        "normalization_formula": "Vector | Linear_Max | Linear_Sum | Min_Max"
+      },
+      "input_source": "Step_5_Output"
+    },
+    {
+      "step_id": 7,
+      "operation": "CalculateWeights",
+      "description": "Calculate criteria weights",
+      "config": {
+        "method_name": "AHP | Entropy | CRITIC | BWM | Direct"
+      },
+      "input_source": "expert_pairwise | decision_matrix"
+    },
+    {
+      "step_id": 8,
+      "operation": "ApplyWeights",
+      "description": "Multiply normalized matrix by weights",
+      "config": {},
+      "input_source": ["Step_6_Output", "Step_7_Output"]
+    },
+    {
+      "step_id": 9,
+      "operation": "DetermineIdealSolutions",
+      "description": "Find positive and negative ideal solutions",
+      "config": {},
+      "input_source": "Step_8_Output"
+    },
+    {
+      "step_id": 10,
+      "operation": "CalculateDistances",
+      "description": "Calculate distance to ideal solutions",
+      "config": {
+        "distance_metric": "Euclidean | Vertex | Hamming"
+      },
+      "input_source": ["Step_8_Output", "Step_9_Output"]
+    },
+    {
+      "step_id": 11,
+      "operation": "RankAlternatives",
+      "description": "Calculate closeness coefficient and rank",
+      "config": {
+        "lambda_val": 0.5
+      },
+      "input_source": "Step_10_Output"
     }
   ],
 
@@ -223,50 +236,55 @@ Centroid, GradedMean, MeanOfMaximum, AlphaCut, ScoreFunction
       { "alternative": "A1", "score": 0.785, "rank": 1 },
       { "alternative": "A2", "score": 0.623, "rank": 2 }
     ],
-    "best_alternative": "A1",
-    "sensitivity_performed": false
+    "best_alternative": "A1"
   },
 
   "extracted_tables": [
-    { "table_number": "Table 3", "description": "Linguistic scale", "extracted": true },
-    { "table_number": "Table 4", "description": "Expert evaluations", "extracted": true }
-  ],
-
-  "data_quality": {
-    "completeness": {
-      "has_linguistic_scale": true,
-      "has_criteria_weights": true,
-      "has_decision_matrix": true,
-      "has_expert_data": true,
-      "has_original_ranking": true
-    },
-    "missing_elements": [],
-    "notes": "Any issues or observations about the extraction"
-  }
+    { "table_id": "Table 3", "content": "Linguistic scale definition", "extracted": true },
+    { "table_id": "Table 4", "content": "Expert evaluations", "extracted": true }
+  ]
 }
 
-# EXTRACTION PRIORITY
-1. First, identify the PRIMARY METHOD (what MCDM technique is used for final ranking?)
-2. Second, identify WEIGHTING METHOD (how are criteria weights determined?)
-3. Third, extract ALL LINGUISTIC SCALES with exact fuzzy number values
-4. Fourth, identify all CRITERIA with their directions (cost/benefit)
-5. Fifth, extract DECISION MATRIX (prefer crisp values, but capture fuzzy if that's what paper has)
-6. Sixth, map the EXECUTION PIPELINE step by step
+# METHOD-SPECIFIC PIPELINE PATTERNS
 
-OUTPUT ONLY THE JSON OBJECT. NO OTHER TEXT.
+## For TOPSIS papers, expect these operations:
+DefineLinguisticScales -> CollectExpertEvaluations -> AggregateFuzzy -> Defuzzify -> ConstructDecisionMatrix -> NormalizeMatrix -> CalculateWeights -> ApplyWeights -> DetermineIdealSolutions -> CalculateDistances -> RankAlternatives
+
+## For VIKOR papers, expect:
+... -> NormalizeMatrix -> CalculateWeights -> CalculateSRQ -> RankAlternatives
+
+## For AHP-based weight calculation, include:
+ConstructPairwiseMatrix -> CalculateConsistency -> CalculateWeights (with method_name: "AHP")
+
+## For EDAS papers:
+... -> CalculatePDA_NDA -> RankAlternatives
+
+## For SAW/WASPAS/ARAS/COPRAS:
+... -> CalculateAggregatedScore -> RankAlternatives
+
+# EXTRACTION RULES
+1. Read the METHODOLOGY section FIRST to understand the flow
+2. Extract ALL linguistic scales with EXACT fuzzy numbers from the paper
+3. Identify ALL criteria with their benefit/cost direction
+4. Map each calculation step to the appropriate OperationType
+5. Include ONLY the operations that are actually used in this paper
+6. Do NOT include operations from other methods (e.g., no DetermineIdealSolutions for VIKOR)
+
+OUTPUT ONLY THE JSON OBJECT. NO OTHER TEXT, NO MARKDOWN, NO CODE BLOCKS.
 `;
 
 
 
 
+
 function validateAndFixAnalysis(analysis) {
-  // Handle new schema format
+  // Handle new MCDM Logic Compiler schema format
   if (analysis.meta) {
     // Transform new schema to compatible format for frontend
     const transformed = {
-      method: analysis.meta.primary_method || 'Unknown Method',
+      method: analysis.meta.ranking_method || analysis.meta.methodology_summary?.split(' ')[0] || 'Unknown Method',
       applicationArea: analysis.meta.application_domain || '',
-      fuzzySystem: analysis.meta.fuzzy_type || 'Crisp',
+      fuzzySystem: analysis.meta.main_fuzzy_type || 'Crisp',
       numberSet: '',
 
       // Map criteria from new format
@@ -293,85 +311,99 @@ function validateAndFixAnalysis(analysis) {
         rank: r.rank
       })),
 
-      // Methodology steps from execution_pipeline
+      // Methodology steps from execution_pipeline (new format with step_id and operation)
       methodologySteps: (analysis.execution_pipeline || []).map(step => ({
-        step: step.step,
-        name: step.name,
+        step: step.step_id || step.step,
+        name: step.operation || step.name,
         description: step.description || '',
-        module: step.module,
-        method: step.method
+        module: step.operation,
+        method: step.config?.method_name || step.config?.aggregation_func || ''
       })),
 
-      // Linguistic scales
+      // Linguistic scales (new flat format)
       linguisticScale: [],
 
       // Logic module
       logicModule: {
-        fuzzyType: analysis.meta.fuzzy_type || 'Crisp',
+        fuzzyType: analysis.meta.main_fuzzy_type || 'Crisp',
         normalization: 'Linear',
         aggregation: 'Weighted-Sum',
-        defuzzification: analysis.meta.defuzzification_method || 'None',
-        weightingMethod: 'Direct'
+        defuzzification: 'Centroid',
+        weightingMethod: analysis.meta.weighting_method || 'Direct',
+        rankingMethod: analysis.meta.ranking_method || 'TOPSIS'
       },
 
-      // Expert data
-      expertEvaluations: analysis.expert_evaluations || null,
-
-      // Pipeline for execution
+      // Pipeline for execution (preserve original format)
       executionPipeline: analysis.execution_pipeline || [],
 
       // Data quality
       dataQuality: {
-        hasCompleteCriteria: analysis.data_quality?.completeness?.has_criteria_weights || false,
-        hasCompleteMatrix: analysis.data_quality?.completeness?.has_decision_matrix || false,
-        hasWeights: analysis.data_quality?.completeness?.has_criteria_weights || false,
-        hasRanking: analysis.data_quality?.completeness?.has_original_ranking || false,
-        hasExpertData: analysis.data_quality?.completeness?.has_expert_data || false,
-        hasLinguisticScale: analysis.data_quality?.completeness?.has_linguistic_scale || false,
-        tablesExtracted: (analysis.extracted_tables || []).map(t => t.table_number),
-        missingData: analysis.data_quality?.missing_elements || [],
-        notes: analysis.data_quality?.notes || ''
+        hasCompleteCriteria: (analysis.criteria?.length || 0) > 0,
+        hasCompleteMatrix: (analysis.decision_matrix?.rows?.length || 0) > 0,
+        hasWeights: analysis.criteria?.some(c => c.weight > 0) || false,
+        hasRanking: (analysis.original_results?.ranking?.length || 0) > 0,
+        hasExpertData: false,
+        hasLinguisticScale: (analysis.linguistic_scales?.length || 0) > 0,
+        tablesExtracted: (analysis.extracted_tables || []).map(t => t.table_id),
+        missingData: [],
+        notes: ''
       },
 
-      summary: `${analysis.meta.primary_method} applied to ${analysis.meta.application_domain}`,
+      summary: analysis.meta.methodology_summary || `${analysis.meta.ranking_method} applied to ${analysis.meta.application_domain}`,
 
       // Keep original new format data
       _rawAnalysis: analysis
     };
 
-    // Extract matrix values
-    if (analysis.decision_matrix?.values) {
-      transformed.matrix = analysis.decision_matrix.values.map(row => row.scores || []);
+    // Extract matrix values from new format (rows instead of values)
+    if (analysis.decision_matrix?.rows) {
+      transformed.matrix = analysis.decision_matrix.rows.map(row => row.values || []);
+    } else if (analysis.decision_matrix?.values) {
+      transformed.matrix = analysis.decision_matrix.values.map(row => row.scores || row.values || []);
     }
 
-    // Extract linguistic scales
-    if (analysis.linguistic_scales) {
+    // Extract linguistic scales (new flat format)
+    if (analysis.linguistic_scales && Array.isArray(analysis.linguistic_scales)) {
       for (const scale of analysis.linguistic_scales) {
-        for (const term of (scale.terms || [])) {
+        // New format: each item is a term directly
+        if (scale.label || scale.short_code) {
           transformed.linguisticScale.push({
-            term: term.full_text,
-            abbreviation: term.label,
-            fuzzyNumber: term.fuzzy_value || [0, 0, 0],
-            crispValue: term.crisp_value || 0
+            term: scale.full_text || scale.label,
+            abbreviation: scale.short_code || scale.label,
+            fuzzyNumber: scale.value || [0, 0, 0],
+            crispValue: scale.crisp || 0
           });
+        }
+        // Old format: nested terms array
+        else if (scale.terms) {
+          for (const term of scale.terms) {
+            transformed.linguisticScale.push({
+              term: term.full_text,
+              abbreviation: term.label,
+              fuzzyNumber: term.fuzzy_value || [0, 0, 0],
+              crispValue: term.crisp_value || 0
+            });
+          }
         }
       }
     }
 
-    // Detect weighting method from pipeline
-    const weightStep = (analysis.execution_pipeline || []).find(s => s.module === 'Weighting');
-    if (weightStep) {
-      transformed.logicModule.weightingMethod = weightStep.method?.split('|')[0]?.trim() || 'Direct';
+    // Detect normalization from pipeline
+    const normStep = (analysis.execution_pipeline || []).find(s => s.operation === 'NormalizeMatrix');
+    if (normStep?.config?.normalization_formula) {
+      const norm = normStep.config.normalization_formula.split('|')[0].trim().replace('_', '');
+      transformed.logicModule.normalization = norm;
     }
 
-    // Detect normalization from pipeline
-    const normStep = (analysis.execution_pipeline || []).find(s => s.module === 'Normalization');
-    if (normStep) {
-      transformed.logicModule.normalization = normStep.method?.split('|')[0]?.trim() || 'Linear';
+    // Detect defuzzification from pipeline
+    const defuzzStep = (analysis.execution_pipeline || []).find(s => s.operation === 'Defuzzify');
+    if (defuzzStep?.config?.method) {
+      transformed.logicModule.defuzzification = defuzzStep.config.method;
     }
 
     return transformed;
   }
+
 
   // Legacy format validation (backward compatibility)
   if (!Array.isArray(analysis.criteria)) analysis.criteria = [];
