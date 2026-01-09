@@ -143,27 +143,73 @@ export const MCDMCalculator: React.FC<Props> = ({ initialData, onDataChange }) =
     setMatrix(newMatrix);
   };
 
-  // Handler for fuzzy cell changes (l, m, u components)
-  const handleFuzzyCellChange = (rowIndex: number, colIndex: number, component: 'l' | 'm' | 'u', value: string) => {
+  // Handler for fuzzy cell changes - uses linguistic scale to auto-calculate l and u from m
+  const handleFuzzyMChange = (rowIndex: number, colIndex: number, mValue: string) => {
     if (!fuzzyMatrix) return;
 
-    const num = value === "" ? 0 : parseFloat(value);
-    const validNum = isNaN(num) ? 0 : num;
+    const m = mValue === "" ? 0 : parseFloat(mValue);
+    const validM = isNaN(m) ? 0 : m;
+
+    // Get linguistic scale from analysis data
+    const linguisticScale = initialData.linguisticScale || [];
+
+    // Find the closest linguistic term based on m value
+    let l = validM;
+    let u = validM;
+
+    if (linguisticScale.length > 0) {
+      // Find the term with closest crisp/m value
+      let closestTerm = linguisticScale[0];
+      let minDiff = Infinity;
+
+      for (const term of linguisticScale) {
+        const termM = Array.isArray(term.fuzzyNumber) && term.fuzzyNumber.length >= 3
+          ? term.fuzzyNumber[1]  // m is the middle value
+          : term.crispValue || 0;
+
+        const diff = Math.abs(termM - validM);
+        if (diff < minDiff) {
+          minDiff = diff;
+          closestTerm = term;
+        }
+      }
+
+      // Use the l and u from the closest term
+      if (Array.isArray(closestTerm.fuzzyNumber) && closestTerm.fuzzyNumber.length >= 3) {
+        l = closestTerm.fuzzyNumber[0];
+        u = closestTerm.fuzzyNumber[2];
+      }
+    } else {
+      // Fallback: estimate l and u based on typical triangular fuzzy pattern
+      // Usually l = m - 0.2, u = m + 0.2 (bounded 0-1)
+      l = Math.max(0, validM - 0.2);
+      u = Math.min(1, validM + 0.2);
+    }
 
     const newFuzzyMatrix = fuzzyMatrix.map((row, i) =>
       i === rowIndex
         ? row.map((cell, j) =>
           j === colIndex
-            ? { ...cell, [component]: validNum }
+            ? { l, m: validM, u }
             : cell
         )
         : [...row]
     );
     setFuzzyMatrix(newFuzzyMatrix);
 
-    // Also update crisp matrix with centroid
-    const updatedCell = newFuzzyMatrix[rowIndex][colIndex];
-    const crispValue = (updatedCell.l + updatedCell.m + updatedCell.u) / 3;
+    // Update crisp matrix - use the paper's defuzzification method if available
+    // Default to centroid: (l + m + u) / 3, but graded mean is (l + 4m + u) / 6
+    const defuzzMethod = initialData.logicModule?.defuzzification || 'centroid';
+    let crispValue: number;
+
+    if (defuzzMethod.toLowerCase().includes('graded') || defuzzMethod.toLowerCase().includes('grade')) {
+      crispValue = (l + 4 * validM + u) / 6;  // Graded mean
+    } else if (defuzzMethod.toLowerCase().includes('mean') && defuzzMethod.toLowerCase().includes('max')) {
+      crispValue = validM;  // Mean of maximum
+    } else {
+      crispValue = (l + validM + u) / 3;  // Centroid (default)
+    }
+
     const newCrispMatrix = matrix.map((row, i) =>
       i === rowIndex
         ? row.map((cell, j) => j === colIndex ? crispValue : cell)
@@ -171,6 +217,7 @@ export const MCDMCalculator: React.FC<Props> = ({ initialData, onDataChange }) =
     );
     setMatrix(newCrispMatrix);
   };
+
 
   const handleWeightChange = (index: number, value: string) => {
     const num = value === "" ? 0 : parseFloat(value);
@@ -661,35 +708,28 @@ export const MCDMCalculator: React.FC<Props> = ({ initialData, onDataChange }) =
                         return (
                           <td key={j} className={`p-1 ${isFuzzyColumn ? 'bg-purple-50/30' : ''}`}>
                             {hasFuzzyData && calculationMode === 'fuzzy' ? (
-                              // Editable fuzzy inputs (l, m, u)
-                              <div className="flex gap-0.5 justify-center">
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  value={fuzzyValue.l || ''}
-                                  onChange={(e) => handleFuzzyCellChange(i, j, 'l', e.target.value)}
-                                  className="w-12 text-center bg-purple-50 border border-purple-200 rounded py-1 font-mono text-[10px] outline-none focus:border-purple-400"
-                                  placeholder="l"
-                                  title="Lower (l)"
-                                />
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  value={fuzzyValue.m || ''}
-                                  onChange={(e) => handleFuzzyCellChange(i, j, 'm', e.target.value)}
-                                  className="w-12 text-center bg-purple-100 border border-purple-300 rounded py-1 font-mono text-[10px] outline-none focus:border-purple-500"
-                                  placeholder="m"
-                                  title="Middle (m)"
-                                />
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  value={fuzzyValue.u || ''}
-                                  onChange={(e) => handleFuzzyCellChange(i, j, 'u', e.target.value)}
-                                  className="w-12 text-center bg-purple-50 border border-purple-200 rounded py-1 font-mono text-[10px] outline-none focus:border-purple-400"
-                                  placeholder="u"
-                                  title="Upper (u)"
-                                />
+                              // Smart fuzzy input - only m is editable, l and u auto-calculated from scale
+                              <div className="flex flex-col items-center gap-0.5">
+                                <div className="flex gap-0.5 items-center">
+                                  <span className="text-[8px] text-purple-400 font-mono w-8 text-right">
+                                    {fuzzyValue.l.toFixed(2)}
+                                  </span>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={fuzzyValue.m || ''}
+                                    onChange={(e) => handleFuzzyMChange(i, j, e.target.value)}
+                                    className="w-14 text-center bg-purple-100 border-2 border-purple-400 rounded py-1 font-mono text-xs font-bold text-purple-800 outline-none focus:border-purple-600"
+                                    placeholder="m"
+                                    title="Enter middle value (m) - l and u auto-calculated from linguistic scale"
+                                  />
+                                  <span className="text-[8px] text-purple-400 font-mono w-8 text-left">
+                                    {fuzzyValue.u.toFixed(2)}
+                                  </span>
+                                </div>
+                                <span className="text-[8px] text-slate-400">
+                                  ({fuzzyValue.l.toFixed(2)}, <strong>{fuzzyValue.m.toFixed(2)}</strong>, {fuzzyValue.u.toFixed(2)})
+                                </span>
                               </div>
                             ) : (
                               // Show crisp input
